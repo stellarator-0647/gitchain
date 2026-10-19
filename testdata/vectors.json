@@ -1,0 +1,356 @@
+{
+  "domain": {
+    "chainId": 31337,
+    "name": "GitChain",
+    "separator": "0x9ce0f4285e8f9b277179b48f2d069f2ceb44ee76d991cd719342db3c207dc84d",
+    "verifyingContract": "0x5fbdb2315678afecb367f032d93f642f64180aa3",
+    "version": "2"
+  },
+  "events": [
+    {
+      "name": "ascii message",
+      "signed": {
+        "event": {
+          "room": "0xbe20012c8c0fe1a3deccc1ed186be45ac5d89121a0807fb041f9ced0bad1a63c",
+          "author": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "seq": 0,
+          "authorPrev": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "seen": "0x0123456789abcdef0123456789abcdef01234567000000000000000000000000",
+          "ts": 1760000000,
+          "kind": 1,
+          "target": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "data1": "0x971c35ee3d7339a4d0296f5b6c9360efacd51be805e7aa4ff7953f45acae791b",
+          "data2": "0x0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        "sig": "0x5a3fb9c21b000e03c97a1947b90f956a26a45909cbafc229e0cd46b8e2a97396304bde0fada6c7c15cb5825cb2a98a30436052f5f4d9a89aabd763d3025f8fe31b"
+      },
+      "blob": {
+        "salt": "0x0000000000000000000000000000000000000000000000000000000000000001",
+        "body": "drawings sent today"
+      },
+      "structHash": "0x75cec419696a8db3cb3280080586083f99e2cd9a01b1fd9a9c568fa6ec11bca0",
+      "eventId": "0xdf953d39b93bb63f8ed39155352a32550b72108f544b8c89476d624180f4c5b9",
+      "signer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+      "contentCommit": "0x971c35ee3d7339a4d0296f5b6c9360efacd51be805e7aa4ff7953f45acae791b",
+      "leaf": "0xf80aa2b3881aa3e7bfe90f37e6d99e358a6e3e8730337a0b92330654818ed8de"
+    },
+    {
+      "name": "unicode message",
+      "signed": {
+        "event": {
+          "room": "0xbe20012c8c0fe1a3deccc1ed186be45ac5d89121a0807fb041f9ced0bad1a63c",
+          "author": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+          "seq": 0,
+          "authorPrev": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "seen": "0x0123456789abcdef0123456789abcdef01234567000000000000000000000000",
+          "ts": 1760000060,
+          "kind": 1,
+          "target": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "data1": "0x569c62ebb0950b834dc8d5584c7f5a7a469564f69ebf04e0bed1bfba9d3efcfe",
+          "data2": "0x0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        "sig": "0x6ef5b689ffad9e7365969722379d2de0c8b588101bf5863e903fd528551298591696bf1f53368dee3c27b21d8128b0a9ff34a8b0b55a19bdac07e4d37daa64361b"
+      },
+      "blob": {
+        "salt": "0x0000000000000000000000000000000000000000000000000000000000000002",
+        "body": "乙方：收到，周三开工 ✅"
+      },
+      "structHash": "0xa8035e094b2aa916e6d71d4c8f59a0a6b32e0db79791ad125bf6e00ceeaf225c",
+      "eventId": "0x0374d2e4d5c45d7c63d9e337cbd3a3984e0e0a3ab33c33252ad4293398fb0472",
+      "signer": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+      "contentCommit": "0x569c62ebb0950b834dc8d5584c7f5a7a469564f69ebf04e0bed1bfba9d3efcfe",
+      "leaf": "0x0fee7b03fc951e605cfd4fde942b53e5befea06d7ff2fd3c74eba101f54114db"
+    },
+    {
+      "name": "second message same author",
+      "signed": {
+        "event": {
+          "room": "0xbe20012c8c0fe1a3deccc1ed186be45ac5d89121a0807fb041f9ced0bad1a63c",
+          "author": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "seq": 1,
+          "authorPrev": "0xdf953d39b93bb63f8ed39155352a32550b72108f544b8c89476d624180f4c5b9",
+          "seen": "0x0123456789abcdef0123456789abcdef01234567000000000000000000000000",
+          "ts": 1760000120,
+          "kind": 1,
+          "target": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "data1": "0x8dbe3b544f34e15b7faf9946fd04e8099268989d050395f5240481106d162413",
+          "data2": "0x0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        "sig": "0xd2177059a54e1561bb21ab18842ebc358293f36a713d68b837a212a4284f9be56789be9cea5df5e51abb41f106b9c9016a83ffb2262d5daf8405fe78b6f99abe1c"
+      },
+      "blob": {
+        "salt": "0x0000000000000000000000000000000000000000000000000000000000000003",
+        "body": "监理周五到场"
+      },
+      "structHash": "0x056feb3b2bc6c830a1868b59330ec108ba4203f88a2d4662cfd93ec64f8ecbbe",
+      "eventId": "0xf598ddf7e2ba6b1ffdcc81a5e3f62d5a71ffa2e7ca9e77a87564565d896edb8f",
+      "signer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+      "contentCommit": "0x8dbe3b544f34e15b7faf9946fd04e8099268989d050395f5240481106d162413",
+      "leaf": "0x633f6505369b4a4dec6a3c6491b9dd47a45b7b6b4486642f8fb27fef15031e86"
+    },
+    {
+      "name": "tombstone",
+      "signed": {
+        "event": {
+          "room": "0xbe20012c8c0fe1a3deccc1ed186be45ac5d89121a0807fb041f9ced0bad1a63c",
+          "author": "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc",
+          "seq": 0,
+          "authorPrev": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "seen": "0x0123456789abcdef0123456789abcdef01234567000000000000000000000000",
+          "ts": 1760000180,
+          "kind": 3,
+          "target": "0xdf953d39b93bb63f8ed39155352a32550b72108f544b8c89476d624180f4c5b9",
+          "data1": "0x0000000000000000000000000000000000000000000000000000000000000001",
+          "data2": "0x0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        "sig": "0xfbc3034ef3f148297fa5473d08d34412dc46f49db1d33721a2740d20a581e4986f69fe3125053e3f1286d943f8d65a396be33d36c1f429a80ab41a00472900841b"
+      },
+      "structHash": "0xd84eae235ee3471fc6e38578ce636ce51ed0a62bbbe4cd80eba7700ac58f6262",
+      "eventId": "0x780e9f2d4feb65fca2ad2a5dc9b451fcc93b1e3c78cfb24b2144be92fbf0d5a4",
+      "signer": "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc",
+      "leaf": "0xee360980a6aaaba461998e814661ee3d8d489d89c09274551c0f4b5cf230d725"
+    },
+    {
+      "name": "receipt",
+      "signed": {
+        "event": {
+          "room": "0xbe20012c8c0fe1a3deccc1ed186be45ac5d89121a0807fb041f9ced0bad1a63c",
+          "author": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+          "seq": 1,
+          "authorPrev": "0x0374d2e4d5c45d7c63d9e337cbd3a3984e0e0a3ab33c33252ad4293398fb0472",
+          "seen": "0x0123456789abcdef0123456789abcdef01234567000000000000000000000000",
+          "ts": 1760000240,
+          "kind": 2,
+          "target": "0xf598ddf7e2ba6b1ffdcc81a5e3f62d5a71ffa2e7ca9e77a87564565d896edb8f",
+          "data1": "0x8dbe3b544f34e15b7faf9946fd04e8099268989d050395f5240481106d162413",
+          "data2": "0x0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        "sig": "0xbbb1851ec73b60c97580d9a64b9f847abfcd4f13cd62f0c031cf2e63bf0525cc12786953bfee3ab2a27699d64420ad5fc9dacab9ab72da2403f06763a1d815df1c"
+      },
+      "structHash": "0xc926f145f440c1dc163a89a39a33a1355b15181ab3495293994aabe68f1a9674",
+      "eventId": "0x08168366cc5e0b2925e491533656ff16816dc7997deaf1a6b78daeba6985e688",
+      "signer": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+      "leaf": "0x1f73ab0f997b69017db39d2907156a81d4bc9b6dedfb6d27d9e180cde9cadcb4"
+    },
+    {
+      "name": "delegated message",
+      "signed": {
+        "event": {
+          "room": "0xbe20012c8c0fe1a3deccc1ed186be45ac5d89121a0807fb041f9ced0bad1a63c",
+          "author": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+          "seq": 2,
+          "authorPrev": "0x08168366cc5e0b2925e491533656ff16816dc7997deaf1a6b78daeba6985e688",
+          "seen": "0x0123456789abcdef0123456789abcdef01234567000000000000000000000000",
+          "ts": 1760000300,
+          "kind": 1,
+          "target": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "data1": "0x631b34e0cc6e035342f634553fa7472ed4f6d0b6525f5f0631de179b4eec41e1",
+          "data2": "0x0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        "sig": "0x602e3d51c00a9481495feee5e8d99c1d31e662eed0da80686ec554d4339e1980366349648f9a910a4ed53c7749b9c6129564174866e0f0394233b7673b1952981b",
+        "delegation": {
+          "delegation": {
+            "room": "0xbe20012c8c0fe1a3deccc1ed186be45ac5d89121a0807fb041f9ced0bad1a63c",
+            "wallet": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+            "delegate": "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc",
+            "validFrom": 1760000000,
+            "validUntil": 1760003600,
+            "kinds": 6
+          },
+          "walletSig": "0x210979f8803ea4b00925c6194e52bcd312ac6d4e1d4de29546ebd7678fc253fa1f93d542b8d722200811cb4e202f303da1c3f465c46c2f1086f604fa2f40e18a1b"
+        }
+      },
+      "blob": {
+        "salt": "0x0000000000000000000000000000000000000000000000000000000000000004",
+        "body": "临时密钥代签：材料已到场"
+      },
+      "structHash": "0xfcbdb47f129a25206e924c9d7d53ce47ae471dd7f90b2022e4e470d1b6be6497",
+      "eventId": "0x0f5c658dd2ceab5df060d62362d4779db888e00a5f055f6ca5d62c9767f38444",
+      "signer": "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc",
+      "contentCommit": "0x631b34e0cc6e035342f634553fa7472ed4f6d0b6525f5f0631de179b4eec41e1",
+      "leaf": "0x96b62070554fe491650ec5f3e3ef310912f7498001082a0462924f2bdccf1a5d",
+      "delegationId": "0xcb33d02f41f63cffbd1232698d39e729992003cef1d8d9d1cd8221c48737d076"
+    }
+  ],
+  "negatives": [
+    {
+      "name": "field changed after signing",
+      "signed": {
+        "event": {
+          "room": "0xbe20012c8c0fe1a3deccc1ed186be45ac5d89121a0807fb041f9ced0bad1a63c",
+          "author": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+          "seq": 0,
+          "authorPrev": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "seen": "0x0123456789abcdef0123456789abcdef01234567000000000000000000000000",
+          "ts": 1760000061,
+          "kind": 1,
+          "target": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "data1": "0x569c62ebb0950b834dc8d5584c7f5a7a469564f69ebf04e0bed1bfba9d3efcfe",
+          "data2": "0x0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        "sig": "0x6ef5b689ffad9e7365969722379d2de0c8b588101bf5863e903fd528551298591696bf1f53368dee3c27b21d8128b0a9ff34a8b0b55a19bdac07e4d37daa64361b"
+      },
+      "expect": "signer mismatch"
+    },
+    {
+      "name": "high-s signature",
+      "signed": {
+        "event": {
+          "room": "0xbe20012c8c0fe1a3deccc1ed186be45ac5d89121a0807fb041f9ced0bad1a63c",
+          "author": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "seq": 0,
+          "authorPrev": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "seen": "0x0123456789abcdef0123456789abcdef01234567000000000000000000000000",
+          "ts": 1760000000,
+          "kind": 1,
+          "target": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "data1": "0x971c35ee3d7339a4d0296f5b6c9360efacd51be805e7aa4ff7953f45acae791b",
+          "data2": "0x0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        "sig": "0x5a3fb9c21b000e03c97a1947b90f956a26a45909cbafc229e0cd46b8e2a97396cfb421f05259383ea34a7da34d5675ce774e89f0ba6ef7a113fafab9cdd6b15e1c"
+      },
+      "expect": "non-canonical signature"
+    }
+  ],
+  "room": "0xbe20012c8c0fe1a3deccc1ed186be45ac5d89121a0807fb041f9ced0bad1a63c",
+  "trees": {
+    "1": {
+      "leaves": [
+        "0xf80aa2b3881aa3e7bfe90f37e6d99e358a6e3e8730337a0b92330654818ed8de"
+      ],
+      "root": "0xf80aa2b3881aa3e7bfe90f37e6d99e358a6e3e8730337a0b92330654818ed8de",
+      "proofs": [
+        []
+      ]
+    },
+    "2": {
+      "leaves": [
+        "0x0fee7b03fc951e605cfd4fde942b53e5befea06d7ff2fd3c74eba101f54114db",
+        "0xf80aa2b3881aa3e7bfe90f37e6d99e358a6e3e8730337a0b92330654818ed8de"
+      ],
+      "root": "0xcc99cf426e5c0971781c16b6d84715b333e9f44126d4a13b0b8e9a283a0afbcd",
+      "proofs": [
+        [
+          "0xf80aa2b3881aa3e7bfe90f37e6d99e358a6e3e8730337a0b92330654818ed8de"
+        ],
+        [
+          "0x0fee7b03fc951e605cfd4fde942b53e5befea06d7ff2fd3c74eba101f54114db"
+        ]
+      ]
+    },
+    "3": {
+      "leaves": [
+        "0x0fee7b03fc951e605cfd4fde942b53e5befea06d7ff2fd3c74eba101f54114db",
+        "0xf80aa2b3881aa3e7bfe90f37e6d99e358a6e3e8730337a0b92330654818ed8de",
+        "0x633f6505369b4a4dec6a3c6491b9dd47a45b7b6b4486642f8fb27fef15031e86"
+      ],
+      "root": "0x066fd08691390c4a95abd48a889c180631a470a824ca05521ceeed4b56587885",
+      "proofs": [
+        [
+          "0xf80aa2b3881aa3e7bfe90f37e6d99e358a6e3e8730337a0b92330654818ed8de",
+          "0x633f6505369b4a4dec6a3c6491b9dd47a45b7b6b4486642f8fb27fef15031e86"
+        ],
+        [
+          "0x0fee7b03fc951e605cfd4fde942b53e5befea06d7ff2fd3c74eba101f54114db",
+          "0x633f6505369b4a4dec6a3c6491b9dd47a45b7b6b4486642f8fb27fef15031e86"
+        ],
+        [
+          "0xcc99cf426e5c0971781c16b6d84715b333e9f44126d4a13b0b8e9a283a0afbcd"
+        ]
+      ]
+    },
+    "5": {
+      "leaves": [
+        "0xee360980a6aaaba461998e814661ee3d8d489d89c09274551c0f4b5cf230d725",
+        "0x0fee7b03fc951e605cfd4fde942b53e5befea06d7ff2fd3c74eba101f54114db",
+        "0x1f73ab0f997b69017db39d2907156a81d4bc9b6dedfb6d27d9e180cde9cadcb4",
+        "0xf80aa2b3881aa3e7bfe90f37e6d99e358a6e3e8730337a0b92330654818ed8de",
+        "0x633f6505369b4a4dec6a3c6491b9dd47a45b7b6b4486642f8fb27fef15031e86"
+      ],
+      "root": "0x1f0a12af53ba6d909a1d192de60bd1ded1b803e94b4198a33acf13b9bec008bd",
+      "proofs": [
+        [
+          "0x0fee7b03fc951e605cfd4fde942b53e5befea06d7ff2fd3c74eba101f54114db",
+          "0x5618439e2082f01884cfefca3a61ddd027e666c30775ca92fec545f957409152",
+          "0x633f6505369b4a4dec6a3c6491b9dd47a45b7b6b4486642f8fb27fef15031e86"
+        ],
+        [
+          "0xee360980a6aaaba461998e814661ee3d8d489d89c09274551c0f4b5cf230d725",
+          "0x5618439e2082f01884cfefca3a61ddd027e666c30775ca92fec545f957409152",
+          "0x633f6505369b4a4dec6a3c6491b9dd47a45b7b6b4486642f8fb27fef15031e86"
+        ],
+        [
+          "0xf80aa2b3881aa3e7bfe90f37e6d99e358a6e3e8730337a0b92330654818ed8de",
+          "0x3a00514d245bbf2d2a5b1552ed689af1ac138fbb28f41342dfb8ed7969b64449",
+          "0x633f6505369b4a4dec6a3c6491b9dd47a45b7b6b4486642f8fb27fef15031e86"
+        ],
+        [
+          "0x1f73ab0f997b69017db39d2907156a81d4bc9b6dedfb6d27d9e180cde9cadcb4",
+          "0x3a00514d245bbf2d2a5b1552ed689af1ac138fbb28f41342dfb8ed7969b64449",
+          "0x633f6505369b4a4dec6a3c6491b9dd47a45b7b6b4486642f8fb27fef15031e86"
+        ],
+        [
+          "0x6caad9446332793e486401163b1db34ed419d1477b657ae42a2db3bde55df0bd"
+        ]
+      ]
+    },
+    "6": {
+      "leaves": [
+        "0xee360980a6aaaba461998e814661ee3d8d489d89c09274551c0f4b5cf230d725",
+        "0x0fee7b03fc951e605cfd4fde942b53e5befea06d7ff2fd3c74eba101f54114db",
+        "0x1f73ab0f997b69017db39d2907156a81d4bc9b6dedfb6d27d9e180cde9cadcb4",
+        "0x96b62070554fe491650ec5f3e3ef310912f7498001082a0462924f2bdccf1a5d",
+        "0xf80aa2b3881aa3e7bfe90f37e6d99e358a6e3e8730337a0b92330654818ed8de",
+        "0x633f6505369b4a4dec6a3c6491b9dd47a45b7b6b4486642f8fb27fef15031e86"
+      ],
+      "root": "0xa7ab0f35a63a4db8510ba09e47e010937256bcf8995a21e7d065ebcfac06ebbc",
+      "proofs": [
+        [
+          "0x0fee7b03fc951e605cfd4fde942b53e5befea06d7ff2fd3c74eba101f54114db",
+          "0xef58133da09d620a0a6c8f23d0dfdacb7c2ce196d36b66d0bfe7dc9308fab5df",
+          "0xbad719dd1bf4a31a457b6ed89d5fdc988f461232d6e6b208674fa16a04b2beb0"
+        ],
+        [
+          "0xee360980a6aaaba461998e814661ee3d8d489d89c09274551c0f4b5cf230d725",
+          "0xef58133da09d620a0a6c8f23d0dfdacb7c2ce196d36b66d0bfe7dc9308fab5df",
+          "0xbad719dd1bf4a31a457b6ed89d5fdc988f461232d6e6b208674fa16a04b2beb0"
+        ],
+        [
+          "0x96b62070554fe491650ec5f3e3ef310912f7498001082a0462924f2bdccf1a5d",
+          "0x3a00514d245bbf2d2a5b1552ed689af1ac138fbb28f41342dfb8ed7969b64449",
+          "0xbad719dd1bf4a31a457b6ed89d5fdc988f461232d6e6b208674fa16a04b2beb0"
+        ],
+        [
+          "0x1f73ab0f997b69017db39d2907156a81d4bc9b6dedfb6d27d9e180cde9cadcb4",
+          "0x3a00514d245bbf2d2a5b1552ed689af1ac138fbb28f41342dfb8ed7969b64449",
+          "0xbad719dd1bf4a31a457b6ed89d5fdc988f461232d6e6b208674fa16a04b2beb0"
+        ],
+        [
+          "0x633f6505369b4a4dec6a3c6491b9dd47a45b7b6b4486642f8fb27fef15031e86",
+          "0x742a0b10c402db4a50e6bed965c03d1be171c13be1b5ea9c81463e932d6bd10a"
+        ],
+        [
+          "0xf80aa2b3881aa3e7bfe90f37e6d99e358a6e3e8730337a0b92330654818ed8de",
+          "0x742a0b10c402db4a50e6bed965c03d1be171c13be1b5ea9c81463e932d6bd10a"
+        ]
+      ]
+    }
+  },
+  "wrongChainEvent": {
+    "event": {
+      "room": "0xbe20012c8c0fe1a3deccc1ed186be45ac5d89121a0807fb041f9ced0bad1a63c",
+      "author": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+      "seq": 0,
+      "authorPrev": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "seen": "0x0123456789abcdef0123456789abcdef01234567000000000000000000000000",
+      "ts": 1760000000,
+      "kind": 1,
+      "target": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "data1": "0x971c35ee3d7339a4d0296f5b6c9360efacd51be805e7aa4ff7953f45acae791b",
+      "data2": "0x0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "sig": "0x5a3fb9c21b000e03c97a1947b90f956a26a45909cbafc229e0cd46b8e2a97396304bde0fada6c7c15cb5825cb2a98a30436052f5f4d9a89aabd763d3025f8fe31b"
+  },
+  "wrongChainExpectedError": "signer mismatch",
+  "wrongChainId": 1
+}
