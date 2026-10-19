@@ -1,0 +1,12 @@
+GitChain
+Copyright 2026 the GitChain course project team
+
+This product is derived from GitChat (https://github.com/Xelckis/GitChat),
+licensed under the Apache License, Version 2.0, at commit eb9c691.
+Reused: the overall node shape (local Go/Gin server, WebSocket hub design,
+periodic Git sync). Replaced: message storage, identity, synchronisation,
+history API and front end. Added: protocol, verifier, contracts, chain client,
+independent verifier and scripts.
+
+contracts/lib/forge-std is forge-std (https://github.com/foundry-rs/forge-std),
+dual-licensed MIT/Apache-2.0.

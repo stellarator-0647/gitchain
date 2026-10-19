@@ -1,1 +1,31 @@
-.idea/
+# build output
+/bin/
+*.exe
+
+# local devnet state, keys and tokens
+/.devnet/
+/deployments/31337.json
+.env
+*.key
+
+# foundry
+/contracts/out/
+/contracts/cache/
+/contracts/broadcast/
+
+# node
+/verifier/node_modules/
+/web/node_modules/
+/web/dist/
+/desktop/node_modules/
+/desktop/ui/
+/desktop/release/
+/desktop/screenshots/
+
+# legacy prototype database
+/repoDB/
+
+# local tool / AI handoff notes (contain machine-specific paths)
+/.claude/
+/docs/CLAUDE_HANDOFF.md
+/docs/CHANGED-FILES-*.json

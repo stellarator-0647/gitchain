@@ -1,207 +1,133 @@
-# Git Chat
+# GitChain
 
-An over-engineered, decentralized, and strictly immutable chat application where **every single message is a Git commit**.
+基于 Git 与区块链的去中心化可信群聊（区块链课程项目）。
 
-Traditional chat applications use centralized databases where messages can be deleted or altered by server administrators. Git Chat turns this concept upside down by using Git's cryptographic hash chain (Merkle tree) as a tamper-proof database. If someone attempts to delete or modify a past message, the cryptographic hash chain breaks, creating a divergent timeline and preventing synchronization with other peers.
+在 [Xelckis/GitChat](https://github.com/Xelckis/GitChat)（Apache-2.0，基线提交 `eb9c691`）上改造：保留 Go 节点、本地 HTTP/WebSocket 和周期同步的思路，重写消息模型、身份、同步与验证，新增链上合约、独立验证器、浏览器前端和 Windows 桌面客户端。协议细则见 [docs/protocol.md](docs/protocol.md)。
 
-There are no take-backs here. What is committed, is committed forever.
+## 它解决什么
 
----
+三方（如甲方、乙方、监理）在群里沟通，需要事后能举证、能发现服务器作恶，又要能按多数同意删除内容：
 
-## How It Works
+| 需求 | 做法 |
+| --- | --- |
+| 证明“这条消息是某个钱包发的，且不晚于某时存在” | EIP-712 钱包签名 + 事件集合的 Merkle 根批量锚定到链上 |
+| 发现共享 Git 服务器篡改、扣留或分视图 | 客户端用签名、作者序号链和链上检查点独立核验，不信任远端 |
+| 按多数同意删除，并且删除本身可审计 | 链上投票授权 → 墓碑事件 → 各节点清理正文，承诺保留 |
+| 断网时各自记录，联网后自动合并 | 签名与 Git commit 解耦，Git 分叉后合并不影响签名 |
+| 把单条消息交给第三方核验 | 导出证明包，独立验证器只读链，不需要节点或 Git |
+| 不想每条消息都弹钱包 | 钱包签一次短期授权（≤ 2 小时），浏览器临时密钥代签消息 |
 
-* **Go-Git Core (`go-git/v6`):** Programmatically creates and manages a local Git repository (`./repoDB`). Chat messages are stored as empty commits (`--allow-empty`) signed with the user's Git name and email.
-* **Event-Driven Sync (`fsnotify`):** Instead of polling the Git history with expensive CPU loops, the backend monitors the `.git/refs/heads` directory for filesystem events (`write`, `create`, `rename`). When a branch reference updates, new commits are detected and processed instantly.
-* **Real-Time WebSocket Hub:** Uses `gorilla/websocket` with a Hub/Client architecture and ping/pong keepalives to broadcast incoming commits immediately to all active browser sessions.
-* **Paginated Message History:** Exposes a paginated REST endpoint (`GET /history?page=N`) fetching 50 commits per page in reverse chronological order, supporting smooth infinite scrolling in the frontend while preventing high RAM usage.
-* **Decentralized Synchronization:** Automatically pushes new messages to a remote Git repository (`origin`) and runs a background synchronization loop every 5 seconds to pull updates from other peers.
+## 组成
 
----
-
-## Architecture & Data Flow
-
-```text
-[ Browser Client A ]
-       │  POST /message
-       ▼
-[ Gin Web Server ] ──(Commit)──► [ Local repoDB ] ──(Push)──► [ Remote Bare Repo (origin) ]
-       ▲                                │                                  │
-       │                           (fsnotify)                         (Pull 5s)
-       │                                │                                  ▼
-[ WebSocket Hub ] ◄────(New Commits)────┘                        [ Client B repoDB ]
-       │                                                                   │
-       ▼                                                              (fsnotify)
-[ Connected Browsers ]                                                     ▼
-                                                                 [ Client B WebSocket ]
+```
+浏览器 / 桌面客户端 ──REST+WS──> 本地 Go 节点 ──git──> 共享 Git 远端（不可信）
+                                     │
+                                     └──RPC──> RoomRegistry · AnchorLog · Governance（以太坊）
+独立验证器：证明包 + 可信部署清单 + RPC
 ```
 
----
+| 模块 | 目录 | 状态 |
+| --- | --- | --- |
+| 协议：EIP-712 事件、签名规范化、内容承诺、Merkle 树、短期授权 | `internal/protocol` | 完成；单测 + 与 go-ethereum 通用 EIP-712 交叉校验 |
+| Git 存储：main 事件日志、content 正文分支、同步合并 | `internal/gitstore` | 完成 |
+| 验证器：签名/成员/序号链/双重发送/正文/检查点/删除授权/授权时间，确定性排序，合并前隔离 | `internal/verify` | 完成 |
+| 链接口：内存实现与 JSON-RPC 实现 | `internal/chain` | 完成 |
+| 节点编排与本地 API | `internal/node`、`internal/api`、`cmd/gitchain` | 完成；三节点端到端测试 |
+| 合约 | `contracts/` | 完成；25 个 Foundry 测试 |
+| 独立验证器与跨语言向量 | `verifier/`、`testdata/vectors.json` | 完成；15 个向量测试 |
+| 浏览器前端 | `web/` | 完成；测试签名全流程，MetaMask 签名、治理交易与短期授权已在 Chrome 实测 |
+| Windows 桌面客户端（Electron） | `desktop/` | 完成；打包与冒烟测试通过，钱包签名需在系统浏览器中进行 |
+| 加分项②–⑥：主动回执、合同协商分支、更换锚定者、增量验证、Sepolia | — | 未开始 |
 
-## Requirements & Prerequisites
+## 快速开始
 
-To run this project, you need:
+需要 Git、Go 1.27+、Foundry、Node.js 22.18+，详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
-1. **[Go](https://go.dev):** Version `1.27+` (or compatible Go release).
-2. **Git CLI:** Installed and accessible in your system's `PATH`.
-3. **Git User Identity (CRITICAL):**
-   The application automatically reads your Git configuration via `git config user.name` and `git config user.email` to sign chat messages.
-
-   > ⚠️ **Important:** If `user.name` or `user.email` is not configured, the application will fail to start on launch (`panic: user.name is empty`).
-
-   Configure your identity globally before running the server:
-   ```bash
-   git config --global user.name "Your Name"
-   git config --global user.email "your.email@example.com"
-   ```
-4. **Modern Web Browser:** Compatible with HTML5, Fetch API, and WebSockets.
-
----
-
-## Getting Started
-
-Follow these steps to set up and run Git Chat locally:
-
-### 1. Clone the Repository
 ```bash
-git clone https://github.com/Xelckis/gitchat.git
-cd gitchat
+infra/scripts/devnet.sh up      # Anvil + 部署合约 + 建房 + bare 远端 + 三个节点（8081/8082/8083）
+infra/scripts/demo.sh           # 发送 → 同步 → 锚定 → 导出证明 → 2/3 投票删除 → 墓碑 → 删除后证明
+cd verifier && npm ci && node src/cli.ts ../.devnet/demo/<proof>.json ../deployments/31337.json
+infra/scripts/devnet.sh down    # 停止；reset 会清空 .devnet/
 ```
 
-### 2. Set Up the "Database" (`repoDB`)
-The application stores all message commits in a local folder named `repoDB` located at the project root.
+前端：
 
-Initialize the repository and create an initial commit:
 ```bash
-mkdir repoDB
-cd repoDB
-git init
-git commit --allow-empty -m "Initial commit"
-cd ..
+cd web && npm ci && npm run dev   # http://localhost:5173
 ```
 
-> **Why is the initial commit required?**
-> The filesystem watcher (`fsnotify`) and Git head resolver (`r.Head()`) require the default branch reference file (e.g., `.git/refs/heads/main` or `master`) to exist before starting the server.
+在“节点设置”里填节点地址（如 `http://127.0.0.1:8082`）和访问令牌（devnet 为 `devtoken-a/b/c`，正式运行见 `<data>/state/api-token`）。签名方式：
 
-### 3. Run the Backend Server
-Install dependencies and launch the Gin server:
+- **临时密钥（默认）**：首次发送时钱包签一次授权，之后由本标签页里的临时密钥签消息；墓碑仍需钱包签名。
+- **浏览器钱包**：每条消息由 MetaMask 签名；页面会请求切换（或添加）到节点所在链。
+- **测试签名（仅开发）**：节点以 `-dev-key-env` 启动时可用，由节点用公开测试私钥签名。
+
+脚本和测试中的私钥均为 Anvil 公开的测试账户，只能用于本地链。
+
+## Windows 桌面客户端
+
+```powershell
+npm --prefix verifier ci; npm --prefix web ci; npm --prefix desktop ci
+npm --prefix desktop run build      # 产物：desktop/release/GitChain-win32-x64/GitChain.exe
+```
+
+客户端自带界面（固定监听 `127.0.0.1:5174`），连接已运行的节点；Electron 不继承浏览器里的 MetaMask，需要钱包时点“在浏览器中使用钱包”。详见 [docs/client.md](docs/client.md)。
+
+## 测试
+
 ```bash
-go mod tidy
-go run main.go
+go vet ./... && go test ./...      # 协议单测 + 三节点端到端（内存链）
+cd contracts && forge test
+npm --prefix verifier test
+npm --prefix web test && npm --prefix web run build
+npm --prefix desktop test
 ```
 
-The server will start listening on port `8081` (default: `http://localhost:8081`).
+Windows 下 `infra/scripts/verify.ps1` 一次跑完全部检查；GitHub Actions 在每次推送时运行同样的测试。
 
-### 4. Start Chatting
-Open your browser and navigate to:
+端到端测试覆盖：三节点排序一致；锚定；证明导出与校验；非锚定者无法锚定；2/3 授权删除（隐藏正文、墓碑、删除后证明）；离线分区合并；伪造事件被拒绝合并并隔离；短期授权有效、不能签墓碑、过期事件不阻塞后续锚定。
+
+## 节点 API
+
+均需请求头 `X-GitChain-Token`；节点只监听回环地址并校验 Origin。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/api/status` | 房间、钱包、健康度、同步、隔离、检查点、当前授权 |
+| GET | `/api/history?page=N` | 每页 50 条，三维状态 evidence / content / redaction |
+| POST | `/api/messages/draft` | `{body}` → `{draftId, eventId, typedData}` |
+| POST | `/api/events/tombstone-draft` | `{proposalId}`，提案须已在链上执行 |
+| POST | `/api/events/commit` | `{draftId, sig}`；sig 来自钱包或已授权的临时密钥 |
+| DELETE | `/api/events/draft/:id` | 释放草稿 |
+| GET | `/api/proof/:eventId?content=1` | 证明包；删除的消息不含正文 |
+| GET | `/api/proposals` | 删除提案及链上状态 |
+| POST | `/api/delegations/draft` | `{delegate, seconds}` → 待钱包签名的授权 |
+| POST / DELETE | `/api/delegations` | 安装 / 停用临时密钥授权 |
+| POST | `/api/anchor/now` | 仅锚定节点（演示用） |
+| GET | `/api/alerts`、`/api/sync/status`、`/api/chain/config` | |
+| WS | `/ws?token=` | 推送 message / state / sync / anchor / redaction |
+
+提案、投票、执行由前端用钱包直接发交易；脚本可用 `bin/gitchain-dev propose|vote|execute`。
+
+## 目录
+
 ```
-http://localhost:8081
-```
-
----
-
-## API Reference
-
-### HTTP Endpoints
-
-| Method | Endpoint | Description | Query / Body Parameters | Response |
-| :--- | :--- | :--- | :--- | :--- |
-| `GET` | `/` | Serves the single-page chat interface (`index.html`) | None | `text/html` |
-| `POST` | `/message` | Submits a new chat message | Form field `message` (`string`, required) | HTTP 200 (or JSON error) |
-| `GET` | `/history` | Fetches paginated past messages (50 items/page) | `page` (optional `int`, default: `1`) | JSON array of `Commit` objects |
-
-#### Commit JSON Schema Example:
-```json
-[
-  {
-    "Hash": "e2a1b94c30c89df7123456789abcdef012345678",
-    "AuthorName": "Alice",
-    "AuthorEmail": "alice@example.com",
-    "When": "2026-09-16T10:30:00Z",
-    "Committer": "Alice <alice@example.com>",
-    "Message": "Hello from Git Chat!"
-  }
-]
-```
-
-### WebSocket Endpoint
-
-| Endpoint | Protocol | Description |
-| :--- | :--- | :--- |
-| `/ws` | `ws://` / `wss://` | Real-time bi-directional connection. Streams new `Commit` objects as JSON whenever commits are detected in `repoDB`. |
-
----
-
-## Multiplayer Mode (Decentralized Synchronization)
-
-To chat with other users across different machines or networks, synchronize your local `repoDB` instances with a shared Bare Git repository:
-
-### 1. Set Up a Central Bare Repository
-Create a bare repository on a VPS, local server, or Git host:
-```bash
-git init --bare /path/to/chat.git
+cmd/gitchain        节点主程序            cmd/gitchain-dev   链上辅助命令（测试密钥）
+cmd/vectors         测试向量生成          internal/          协议、存储、验证、链、节点、API
+contracts/          Foundry 合约          verifier/          独立验证器（TypeScript）
+web/                浏览器前端            desktop/           Windows 桌面客户端（Electron）
+infra/scripts/      devnet / demo / verify   deployments/    可信部署清单（本地生成，不入库）
+docs/               协议、客户端、历史记录   testdata/       跨语言向量
 ```
 
-### 2. Connect Your Local `repoDB` to the Remote
-Inside each participant's `repoDB` folder, add the remote origin and push the initial commit:
-```bash
-cd repoDB
-git remote add origin <url-or-path-to-bare-repo>
-git branch -M main
-git push -u origin main
-cd ..
-```
+## 已知限制
 
-### 3. Automatic Synchronization in Action
-* **Sending Messages:** When a user posts a message, the server creates a local commit in `repoDB` and immediately pushes it to `origin`.
-* **Receiving Messages:** Each peer's backend runs `StartSyncLoop`, which executes `git pull origin` every 5 seconds.
-* **Instant Delivery:** When pulled commits update `.git/refs/heads/main`, `fsnotify` detects the change and pushes the new messages directly to connected browsers via WebSocket without needing to refresh the page.
+- 指定锚定节点是信任假设：它离线则不产生新检查点，作恶只能被发现、不能自动恢复。
+- 删除只清理各节点管理的当前正文快照；Git 历史中的旧对象需在维护窗口清理，别人已保存的副本无法删除。
+- 正文对成员和 Git 服务可见，没有端到端加密。
+- 短期授权没有链上吊销；时间有效性以检查点区块时间判断，节点时钟与链时间偏差较大时需留意。
+- 桌面端未做代码签名，Windows 可能提示未知发布者。
 
----
+## 致谢与许可
 
-## Project Structure
-
-```text
-gitchat/
-├── index.html              # Frontend UI (HTML5, CSS3, Vanilla JS, WebSockets)
-├── main.go                 # Main entrypoint, HTTP router configuration & lifecycle
-├── internal/
-│   ├── gitLogic/
-│   │   ├── git.go          # Git repository operations (commit, pull, push, log history)
-│   │   └── watcher.go      # fsnotify file watcher on .git/refs/heads
-│   └── web/
-│       ├── handlers.go     # Gin HTTP handlers (/message, /history)
-│       └── websocket.go    # Gorilla WebSocket Hub and Client connection management
-├── repoDB/                 # (Created at setup) Local Git database repository
-├── go.mod                  # Go module definition and dependencies
-├── go.sum                  # Dependency lockfile
-└── README.md               # Project documentation
-```
-
----
-
-## Troubleshooting & FAQ
-
-#### `panic: user.name is empty` or `panic: user.email is empty`
-* **Cause:** Git user configuration is missing on the machine.
-* **Fix:** Run:
-  ```bash
-  git config --global user.name "Your Name"
-  git config --global user.email "your.email@example.com"
-  ```
-
-#### `Failed to start Git monitoring: ...`
-* **Cause:** The `repoDB` directory does not exist or has not had an initial commit created.
-* **Fix:** Ensure step 2 of *Getting Started* was executed (`mkdir repoDB && cd repoDB && git init && git commit --allow-empty -m "Initial commit"`).
-
-#### `warning: failed sending message to remote repo`
-* **Cause:** No remote `origin` is configured in `repoDB` (or the remote is unreachable).
-* **Fix:** This warning is expected and harmless when running locally in single-player mode. If using multiplayer mode, verify `git remote -v` inside `repoDB`.
-
-#### Port `8081` is already in use
-* **Fix:** Change the port passed to `router.Run(":8081")` in `main.go` to any free port (e.g., `:8082`).
-
----
-
-## License
-
-This project is open-source and available under the [Apache License 2.0](LICENSE).
+Apache-2.0，见 [LICENSE](LICENSE) 与 [NOTICE](NOTICE)。基于 Xelckis/GitChat；合约测试使用 forge-std。
