@@ -1,0 +1,188 @@
+[
+  {
+    "type": "function",
+    "name": "MAX_MEMBERS",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "createRoom",
+    "inputs": [
+      {
+        "name": "room",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "initial",
+        "type": "address[]",
+        "internalType": "address[]"
+      },
+      {
+        "name": "anchorWriter",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "isMember",
+    "inputs": [
+      {
+        "name": "room",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "who",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "membersOf",
+    "inputs": [
+      {
+        "name": "room",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address[]",
+        "internalType": "address[]"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "roomInfo",
+    "inputs": [
+      {
+        "name": "room",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple",
+        "internalType": "struct RoomRegistry.Room",
+        "components": [
+          {
+            "name": "creator",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "anchorWriter",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "createdBlock",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "memberCount",
+            "type": "uint32",
+            "internalType": "uint32"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "event",
+    "name": "RoomCreated",
+    "inputs": [
+      {
+        "name": "room",
+        "type": "bytes32",
+        "indexed": true,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "creator",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "anchorWriter",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      },
+      {
+        "name": "members",
+        "type": "address[]",
+        "indexed": false,
+        "internalType": "address[]"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "error",
+    "name": "AnchorWriterNotMember",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "BadMemberCount",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "CreatorNotMember",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "DuplicateMember",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "RoomExists",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ZeroMember",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ZeroRoom",
+    "inputs": []
+  }
+]
