@@ -1,0 +1,283 @@
+package node
+
+import (
+	"context"
+	"crypto/ecdsa"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/gitchain/gitchain/internal/chain"
+	"github.com/gitchain/gitchain/internal/protocol"
+	"github.com/gitchain/gitchain/internal/verify"
+)
+
+// applyRedactions hides and removes, from the content branch this node
+// manages, every body whose deletion is authorised on chain. Only the
+// current content snapshot is rewritten; older Git objects stay until a
+// controlled maintenance window (docs/protocol.md §6.5).
+func (n *Node) applyRedactions(ctx context.Context) error {
+	res := n.Result()
+	if res == nil {
+		return nil
+	}
+	var targets []string
+	for _, m := range res.Messages {
+		if m.Redaction == verify.RedactionNone || m.Kind != protocol.KindMessage {
+			continue
+		}
+		if _, err := n.repo.ReadBlob(m.EventID.Hex()); err == nil {
+			targets = append(targets, strings.ToLower(m.EventID.Hex()))
+		}
+	}
+	if len(targets) == 0 {
+		return nil
+	}
+	n.writeMu.Lock()
+	defer n.writeMu.Unlock()
+	head, err := n.repo.ContentHead()
+	if err != nil {
+		return err
+	}
+	man, err := n.repo.ReadManifest(head)
+	if err != nil {
+		return err
+	}
+	blobs, err := n.repo.AllBlobs(head)
+	if err != nil {
+		return err
+	}
+	deleted := append(append([]string(nil), man.Deleted...), targets...)
+	if err := n.repo.RebuildContent(blobs, deleted, man.Generation+1, []string{head}); err != nil {
+		return err
+	}
+	n.notify("redaction", map[string]any{"purged": targets})
+	return nil
+}
+
+// AnchorNow anchors immediately if this is the anchor node (demo entry).
+func (n *Node) AnchorNow(ctx context.Context) error { return n.maybeAnchor(ctx, true) }
+
+func (n *Node) maybeAnchor(ctx context.Context, force bool) error {
+	if n.anchor == nil {
+		if force {
+			return errors.New("this node is not configured as the anchor node")
+		}
+		return nil
+	}
+	info, err := n.room(ctx)
+	if err != nil {
+		return err
+	}
+	if info.AnchorWriter != n.anchor.Address() {
+		return errors.New("anchor key is not the room's anchor writer")
+	}
+	res := n.Result()
+	if res == nil {
+		return nil
+	}
+	n.stateMu.RLock()
+	quarantined := len(n.quarantine) > 0
+	last := n.lastAnchor
+	n.stateMu.RUnlock()
+	if quarantined || res.Health != verify.RoomHealthy {
+		return errors.New("room is not healthy; refusing to anchor")
+	}
+	for _, m := range res.Messages {
+		if m.Evidence == verify.EvidenceInvalid && !m.DelegationExpired {
+			return fmt.Errorf("head contains invalid event %s; refusing to anchor", m.EventID.Hex())
+		}
+	}
+	if n.repo.Unpushed() > 0 {
+		return nil // anchor only what other members can fetch
+	}
+	acc := res.Accepted()
+	var prevCount uint32
+	prev := uint64(chain.GenesisPrev)
+	if res.Latest != nil {
+		prevCount, prev = res.Latest.Count, res.Latest.Index
+	}
+	newEvents := len(acc) - int(prevCount)
+	if newEvents <= 0 {
+		return nil
+	}
+	due := force || newEvents >= n.cfg.AnchorN || time.Since(last) >= n.cfg.AnchorEvery
+	if !due {
+		return nil
+	}
+	tree, _, err := protocol.SnapshotTree(acc)
+	if err != nil {
+		return err
+	}
+	commit, err := protocol.SeenFromCommit(res.Head)
+	if err != nil {
+		return err
+	}
+	tx, err := n.anchor.Anchor(ctx, n.cfg.Room, prev, commit, tree.Root(), uint32(tree.Count()))
+	if err != nil {
+		return err
+	}
+	n.stateMu.Lock()
+	n.lastAnchor = time.Now()
+	n.stateMu.Unlock()
+	n.notify("anchor", map[string]any{"tx": tx, "count": tree.Count(), "root": tree.Root()})
+	return n.Refresh(ctx)
+}
+
+// Inclusion proves that an event is a leaf of a checkpoint.
+type Inclusion struct {
+	CheckpointIndex uint64        `json:"checkpointIndex"`
+	Root            common.Hash   `json:"root"`
+	Count           uint32        `json:"count"`
+	LeafIndex       int           `json:"leafIndex"`
+	Proof           []common.Hash `json:"proof"`
+}
+
+// RedactionProof carries the tombstone of a deleted message.
+type RedactionProof struct {
+	ProposalID         uint64               `json:"proposalId"`
+	Tombstone          protocol.SignedEvent `json:"tombstone"`
+	TombstoneInclusion *Inclusion           `json:"tombstoneInclusion"`
+}
+
+// ProofBundle is the self-contained evidence for one event
+// (docs/protocol.md §6.6). It references a deployment; it never overrides
+// the verifier's trusted configuration.
+type ProofBundle struct {
+	Version   int                  `json:"version"`
+	ChainID   int64                `json:"chainId"`
+	Room      common.Hash          `json:"room"`
+	Contracts Contracts            `json:"contracts"`
+	Event     protocol.SignedEvent `json:"event"`
+	EventID   common.Hash          `json:"eventId"`
+	Content   *protocol.Blob       `json:"content"`
+	Inclusion *Inclusion           `json:"inclusion"`
+	Redaction *RedactionProof      `json:"redaction"`
+}
+
+func (n *Node) inclusion(ctx context.Context, id common.Hash, cpIndex uint64) (*Inclusion, error) {
+	cps, err := n.reader.Checkpoints(ctx, n.cfg.Room)
+	if err != nil {
+		return nil, err
+	}
+	if cpIndex >= uint64(len(cps)) {
+		return nil, errors.New("checkpoint not found")
+	}
+	cp := cps[cpIndex]
+	commit, _ := protocol.CommitFromSeen(cp.GitCommit)
+	in, err := n.baseInput(ctx)
+	if err != nil {
+		return nil, err
+	}
+	snap, err := n.verifier.Snapshot(in, commit)
+	if err != nil {
+		return nil, err
+	}
+	tree, sorted, err := protocol.SnapshotTree(snap)
+	if err != nil {
+		return nil, err
+	}
+	for i, e := range sorted {
+		if e.ID == id {
+			return &Inclusion{CheckpointIndex: cp.Index, Root: tree.Root(), Count: uint32(tree.Count()), LeafIndex: i, Proof: tree.Proof(i)}, nil
+		}
+	}
+	return nil, errors.New("event not in checkpoint snapshot")
+}
+
+// ExportProof builds the proof bundle for eventID. includeContent controls
+// whether body and salt are disclosed; deleted messages never include them.
+func (n *Node) ExportProof(ctx context.Context, id common.Hash, includeContent bool) (*ProofBundle, error) {
+	res := n.Result()
+	if res == nil {
+		return nil, errors.New("node has not verified the room yet")
+	}
+	m, ok := res.Get(id)
+	if !ok {
+		return nil, errors.New("unknown event")
+	}
+	if m.Evidence != verify.EvidenceAnchored || m.CheckpointIndex == nil {
+		return nil, fmt.Errorf("event evidence is %q; only anchored events can be exported", m.Evidence)
+	}
+	se, err := n.verifier.ReadEvent(n.repo, res.Head, m.Path)
+	if err != nil {
+		return nil, err
+	}
+	inc, err := n.inclusion(ctx, id, *m.CheckpointIndex)
+	if err != nil {
+		return nil, err
+	}
+	pb := &ProofBundle{Version: 2, ChainID: n.cfg.ChainID, Room: n.cfg.Room, Contracts: n.cfg.Contracts,
+		Event: se, EventID: id, Inclusion: inc}
+	if m.Redaction == verify.RedactionNone && includeContent && m.Content == verify.ContentAvailable {
+		raw, err := n.repo.ReadBlob(id.Hex())
+		if err == nil {
+			var b protocol.Blob
+			if json.Unmarshal(raw, &b) == nil {
+				pb.Content = &b
+			}
+		}
+	}
+	if m.Redaction == verify.RedactionApplied && m.ProposalID != nil {
+		for _, t := range res.Messages {
+			if t.Kind == protocol.KindTombstone && t.Target != nil && *t.Target == id && t.Evidence != verify.EvidenceInvalid {
+				tse, err := n.verifier.ReadEvent(n.repo, res.Head, t.Path)
+				if err != nil {
+					return nil, err
+				}
+				rp := &RedactionProof{ProposalID: *m.ProposalID, Tombstone: tse}
+				if t.CheckpointIndex != nil {
+					if rp.TombstoneInclusion, err = n.inclusion(ctx, t.EventID, *t.CheckpointIndex); err != nil {
+						return nil, err
+					}
+				}
+				pb.Redaction = rp
+				break
+			}
+		}
+	}
+	return pb, nil
+}
+
+// DevSend drafts, signs with a local test key and commits in one call. It
+// exists for scripts and stress tests only and must use keys labelled as
+// test identities.
+func (n *Node) DevSend(body string, key *ecdsa.PrivateKey) (common.Hash, error) {
+	d, err := n.PrepareMessage(body)
+	if err != nil {
+		return common.Hash{}, err
+	}
+	sig, err := protocol.SignDigest(d.EventID, key)
+	if err != nil {
+		return common.Hash{}, err
+	}
+	return n.CommitSigned(d.ID, sig)
+}
+
+// DevSignPending signs the pending draft with a local test key.
+func (n *Node) DevSignPending(draftID string, key *ecdsa.PrivateKey) (common.Hash, error) {
+	n.writeMu.Lock()
+	d := n.draft
+	n.writeMu.Unlock()
+	if d == nil || d.ID != draftID {
+		return common.Hash{}, errors.New("unknown or expired draft")
+	}
+	return n.DevSignDraft(d, key)
+}
+
+// DevSignDraft signs an already prepared draft with a local test key.
+func (n *Node) DevSignDraft(d *Draft, key *ecdsa.PrivateKey) (common.Hash, error) {
+	sig, err := protocol.SignDigest(d.EventID, key)
+	if err != nil {
+		return common.Hash{}, err
+	}
+	return n.CommitSigned(d.ID, sig)
+}
+
+// Proposals lists the room's deletion proposals with their chain state.
+func (n *Node) Proposals(ctx context.Context) ([]chain.Proposal, error) {
+	return n.reader.Proposals(ctx, n.cfg.Room)
+}
