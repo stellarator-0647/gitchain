@@ -1,0 +1,19 @@
+{
+  "name": "gitchain-desktop",
+  "version": "0.2.1",
+  "description": "GitChain Windows desktop client",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "build": "node build.cjs",
+    "test": "node --test *.test.cjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "Apache-2.0",
+  "type": "commonjs",
+  "devDependencies": {
+    "@electron/packager": "20.3.0",
+    "electron": "44.9.0"
+  }
+}
