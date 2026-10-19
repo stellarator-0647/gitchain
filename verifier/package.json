@@ -1,0 +1,21 @@
+{
+  "name": "@gitchain/verifier",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Independent GitChain proof-bundle verifier. Talks only to the chain; never to Git or a node.",
+  "exports": "./src/verify.ts",
+  "bin": {
+    "gitchain-verify": "./src/cli.ts"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.ts",
+    "verify": "node src/cli.ts"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "dependencies": {
+    "viem": "^2.57.7"
+  }
+}
