@@ -54,6 +54,30 @@
   },
   {
     "type": "function",
+    "name": "hasVotedOrder",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "isRedacted",
     "inputs": [
       {
@@ -75,6 +99,133 @@
       }
     ],
     "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "orderOfPair",
+    "inputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "orderProposal",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple",
+        "internalType": "struct Governance.OrderProposal",
+        "components": [
+          {
+            "name": "room",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "a",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "b",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "proposer",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "createdBlock",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "deadlineBlock",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "forA",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "forB",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "outcome",
+            "type": "uint8",
+            "internalType": "uint8"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "orderProposalCount",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "pairKey",
+    "inputs": [
+      {
+        "name": "a",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "b",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "pure"
   },
   {
     "type": "function",
@@ -157,6 +308,35 @@
   },
   {
     "type": "function",
+    "name": "proposeOrder",
+    "inputs": [
+      {
+        "name": "room",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "a",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "b",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "proposeRedaction",
     "inputs": [
       {
@@ -217,6 +397,24 @@
   },
   {
     "type": "function",
+    "name": "voteOrder",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "aFirst",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "votingBlocks",
     "inputs": [],
     "outputs": [
@@ -249,6 +447,105 @@
         "type": "bytes32",
         "indexed": false,
         "internalType": "bytes32"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "OrderProposed",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "room",
+        "type": "bytes32",
+        "indexed": true,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "a",
+        "type": "bytes32",
+        "indexed": false,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "b",
+        "type": "bytes32",
+        "indexed": false,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "proposer",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      },
+      {
+        "name": "deadlineBlock",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "OrderSettled",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "room",
+        "type": "bytes32",
+        "indexed": true,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "before",
+        "type": "bytes32",
+        "indexed": false,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "later",
+        "type": "bytes32",
+        "indexed": false,
+        "internalType": "bytes32"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "OrderVoted",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "voter",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "aFirst",
+        "type": "bool",
+        "indexed": false,
+        "internalType": "bool"
       }
     ],
     "anonymous": false
@@ -322,6 +619,11 @@
   },
   {
     "type": "error",
+    "name": "AlreadyOrdered",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "AlreadyRedacted",
     "inputs": []
   },
@@ -338,6 +640,21 @@
   {
     "type": "error",
     "name": "NotMember",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "OrderOpen",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "SameEvent",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "UnknownOrder",
     "inputs": []
   },
   {

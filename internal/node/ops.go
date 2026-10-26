@@ -11,6 +11,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/gitchain/gitchain/internal/chain"
+	"github.com/gitchain/gitchain/internal/gitstore"
 	"github.com/gitchain/gitchain/internal/protocol"
 	"github.com/gitchain/gitchain/internal/verify"
 )
@@ -58,41 +59,60 @@ func (n *Node) applyRedactions(ctx context.Context) error {
 	return nil
 }
 
+// Reasons AnchorNowReport gives for not submitting a checkpoint.
+const (
+	AnchorNothingNew = "nothing_new" // every accepted event is already covered
+	AnchorUnpushed   = "unpushed"    // waiting until other members can fetch the head
+)
+
 // AnchorNow anchors immediately if this is the anchor node (demo entry).
-func (n *Node) AnchorNow(ctx context.Context) error { return n.maybeAnchor(ctx, true) }
+func (n *Node) AnchorNow(ctx context.Context) error {
+	_, err := n.anchorRound(ctx, true)
+	return err
+}
+
+// AnchorNowReport is AnchorNow that also says why nothing was submitted ("" when anchored).
+func (n *Node) AnchorNowReport(ctx context.Context) (string, error) { return n.anchorRound(ctx, true) }
 
 func (n *Node) maybeAnchor(ctx context.Context, force bool) error {
+	_, err := n.anchorRound(ctx, force)
+	return err
+}
+
+func (n *Node) anchorRound(ctx context.Context, force bool) (string, error) {
+	n.anchorMu.Lock()
+	defer n.anchorMu.Unlock()
 	if n.anchor == nil {
 		if force {
-			return errors.New("this node is not configured as the anchor node")
+			return "", errors.New("this node is not configured as the anchor node")
 		}
-		return nil
+		return "", nil
 	}
 	info, err := n.room(ctx)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if info.AnchorWriter != n.anchor.Address() {
-		return errors.New("anchor key is not the room's anchor writer")
+		return "", errors.New("anchor key is not the room's anchor writer")
 	}
 	res := n.Result()
 	if res == nil {
-		return nil
+		return AnchorNothingNew, nil
 	}
 	n.stateMu.RLock()
 	quarantined := len(n.quarantine) > 0
 	last := n.lastAnchor
 	n.stateMu.RUnlock()
 	if quarantined || res.Health != verify.RoomHealthy {
-		return errors.New("room is not healthy; refusing to anchor")
+		return "", errors.New("room is not healthy; refusing to anchor")
 	}
 	for _, m := range res.Messages {
 		if m.Evidence == verify.EvidenceInvalid && !m.DelegationExpired {
-			return fmt.Errorf("head contains invalid event %s; refusing to anchor", m.EventID.Hex())
+			return "", fmt.Errorf("head contains invalid event %s; refusing to anchor", m.EventID.Hex())
 		}
 	}
 	if n.repo.Unpushed() > 0 {
-		return nil // anchor only what other members can fetch
+		return AnchorUnpushed, nil // anchor only what other members can fetch
 	}
 	acc := res.Accepted()
 	var prevCount uint32
@@ -102,29 +122,29 @@ func (n *Node) maybeAnchor(ctx context.Context, force bool) error {
 	}
 	newEvents := len(acc) - int(prevCount)
 	if newEvents <= 0 {
-		return nil
+		return AnchorNothingNew, nil
 	}
 	due := force || newEvents >= n.cfg.AnchorN || time.Since(last) >= n.cfg.AnchorEvery
 	if !due {
-		return nil
+		return "", nil
 	}
 	tree, _, err := protocol.SnapshotTree(acc)
 	if err != nil {
-		return err
+		return "", err
 	}
 	commit, err := protocol.SeenFromCommit(res.Head)
 	if err != nil {
-		return err
+		return "", err
 	}
 	tx, err := n.anchor.Anchor(ctx, n.cfg.Room, prev, commit, tree.Root(), uint32(tree.Count()))
 	if err != nil {
-		return err
+		return "", err
 	}
 	n.stateMu.Lock()
 	n.lastAnchor = time.Now()
 	n.stateMu.Unlock()
 	n.notify("anchor", map[string]any{"tx": tx, "count": tree.Count(), "root": tree.Root()})
-	return n.Refresh(ctx)
+	return "", n.Refresh(ctx)
 }
 
 // Inclusion proves that an event is a leaf of a checkpoint.
@@ -280,4 +300,60 @@ func (n *Node) DevSignDraft(d *Draft, key *ecdsa.PrivateKey) (common.Hash, error
 // Proposals lists the room's deletion proposals with their chain state.
 func (n *Node) Proposals(ctx context.Context) ([]chain.Proposal, error) {
 	return n.reader.Proposals(ctx, n.cfg.Room)
+}
+
+// OrderProposals lists the room's votes on the order of concurrent events.
+func (n *Node) OrderProposals(ctx context.Context) ([]chain.OrderProposal, error) {
+	return n.reader.OrderProposals(ctx, n.cfg.Room)
+}
+
+// GitView describes the local room repository for the UI: where main and
+// origin/main point, recent commits, and which commit each checkpoint anchored.
+type GitView struct {
+	Head              string            `json:"head"`
+	RemoteHead        string            `json:"remoteHead"`
+	Unpushed          int               `json:"unpushed"`
+	SyncPaused        bool              `json:"syncPaused"`
+	ContentHead       string            `json:"contentHead"`
+	ContentGeneration uint64            `json:"contentGeneration"`
+	ContentDeleted    int               `json:"contentDeleted"`
+	Commits           []gitstore.Commit `json:"commits"`
+	Checkpoints       []GitCheckpoint   `json:"checkpoints"`
+}
+
+// GitCheckpoint ties a checkpoint to the Git commit whose snapshot it anchored.
+type GitCheckpoint struct {
+	Index   uint64 `json:"index"`
+	Commit  string `json:"commit"`
+	Count   uint32 `json:"count"`
+	BlockNo uint64 `json:"blockNo"`
+}
+
+// Git returns the repository view with up to n recent main commits.
+func (n *Node) Git(limit int) (*GitView, error) {
+	head, err := n.repo.Head()
+	if err != nil {
+		return nil, err
+	}
+	commits, err := n.repo.Log(limit)
+	if err != nil {
+		return nil, err
+	}
+	v := &GitView{Head: head, RemoteHead: n.repo.RemoteHead(), Unpushed: n.repo.Unpushed(),
+		SyncPaused: n.syncPaused.Load(), Commits: commits, Checkpoints: []GitCheckpoint{}}
+	if ch, err := n.repo.ContentHead(); err == nil {
+		v.ContentHead = ch
+		if m, err := n.repo.ReadManifest(ch); err == nil {
+			v.ContentGeneration, v.ContentDeleted = m.Generation, len(m.Deleted)
+		}
+	}
+	n.stateMu.RLock()
+	cps := n.checkpoints
+	n.stateMu.RUnlock()
+	for _, cp := range cps {
+		// gitCommit is the 20-byte SHA-1 left-aligned in 32 bytes.
+		v.Checkpoints = append(v.Checkpoints, GitCheckpoint{Index: cp.Index, Commit: strings.ToLower(cp.GitCommit.Hex()[2:42]),
+			Count: cp.Count, BlockNo: cp.BlockNo})
+	}
+	return v, nil
 }

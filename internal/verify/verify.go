@@ -57,6 +57,8 @@ type Input struct {
 	Head        string
 	Checkpoints []chain.Checkpoint
 	Redactions  []chain.Redaction
+	// Orders are the room's ordering votes; settled ones order concurrent pairs.
+	Orders []chain.OrderProposal
 	// ContentRev is the content branch revision to read bodies from; when
 	// empty, Blob is used instead.
 	ContentRev string
@@ -91,6 +93,19 @@ type Message struct {
 	// its delegation ended. It is invalid evidence but, unlike structural
 	// errors, it does not stop the room from being anchored.
 	DelegationExpired bool `json:"delegationExpired,omitempty"`
+	Concurrent        []ConcurrentPeer `json:"concurrent,omitempty"`
+}
+
+// ConcurrentPeer is another author's valid event that neither side had seen
+// when signing (each is outside the other's seen snapshot), so no signed
+// causal order exists between them.
+type ConcurrentPeer struct {
+	EventID common.Hash `json:"eventId"`
+	// Order is "before" or "after" (this message relative to the peer) once
+	// the members' vote on chain has settled it; empty while undecided.
+	Order string `json:"order,omitempty"`
+	// OrderProposal is the latest ordering vote on this pair, open or settled.
+	OrderProposal *uint64 `json:"orderProposal,omitempty"`
 }
 
 // Alert is a room-level finding.
@@ -342,7 +357,7 @@ func (v *Verifier) Run(in Input) (*Result, error) {
 		}
 	}
 
-	order := v.order(&in, evs)
+	order, conc := v.order(&in, evs)
 	for _, p := range order {
 		m := Message{EventID: p.id, Author: p.se.Event.Author, Seq: p.se.Event.Seq, Ts: p.se.Event.Ts,
 			Kind: p.se.Event.Kind, Path: p.path, Redaction: RedactionNone, Content: ContentAvailable}
@@ -379,6 +394,7 @@ func (v *Verifier) Run(in Input) (*Result, error) {
 		if p.se.Event.Kind == protocol.KindMessage {
 			v.content(&in, p, &m)
 		}
+		m.Concurrent = conc[p.id]
 		res.byID[p.id] = len(res.Messages)
 		res.Messages = append(res.Messages, m)
 		if p.reason == "" {
@@ -499,15 +515,20 @@ func (v *Verifier) snapshot(in *Input, commit string) ([]protocol.IndexedEvent, 
 // order is a deterministic topological sort. An event depends on its
 // authorPrev and on every event present in the commit it declares as seen;
 // among ready events the smallest (ts, author, seq, id) goes first.
-func (v *Verifier) order(in *Input, evs []*parsed) []*parsed {
+// order sorts events topologically (authorPrev and seen snapshots, then
+// settled ordering votes between concurrent pairs) and reports, per valid
+// event, the other authors' valid events it is concurrent with.
+func (v *Verifier) order(in *Input, evs []*parsed) ([]*parsed, map[common.Hash][]ConcurrentPeer) {
 	idx := map[common.Hash]*parsed{}
 	for _, p := range evs {
 		idx[p.id] = p
 	}
 	deps := map[*parsed][]*parsed{}
 	indeg := map[*parsed]int{}
+	seen := map[*parsed]map[common.Hash]bool{} // ids in the signed seen snapshot
 	for _, p := range evs {
 		indeg[p] += 0
+		seen[p] = map[common.Hash]bool{}
 		add := func(d *parsed) {
 			if d != nil && d != p {
 				deps[d] = append(deps[d], p)
@@ -520,10 +541,80 @@ func (v *Verifier) order(in *Input, evs []*parsed) []*parsed {
 		if commit, ok := protocol.CommitFromSeen(p.se.Event.Seen); ok && v.hasCommit(in.Git, commit) {
 			if entries, err := v.tree(in.Git, commit); err == nil {
 				for _, te := range entries {
-					add(idx[common.HexToHash(idFromPath(te.Path))])
+					id := common.HexToHash(idFromPath(te.Path))
+					seen[p][id] = true
+					add(idx[id])
 				}
 			}
 		}
+	}
+
+	// A seen snapshot is a Git tree, which holds every event merged before
+	// it, so "a is in b's snapshot" already covers indirect knowledge.
+	conc := map[common.Hash][]ConcurrentPeer{}
+	isConc := func(a, b *parsed) bool {
+		return a.reason == "" && b.reason == "" && a.se.Event.Author != b.se.Event.Author &&
+			!seen[a][b.id] && !seen[b][a.id]
+	}
+	for i, a := range evs {
+		for _, b := range evs[i+1:] {
+			if isConc(a, b) {
+				conc[a.id] = append(conc[a.id], ConcurrentPeer{EventID: b.id})
+				conc[b.id] = append(conc[b.id], ConcurrentPeer{EventID: a.id})
+			}
+		}
+	}
+	mark := func(x, y common.Hash, order string, id uint64) {
+		for i := range conc[x] {
+			if conc[x][i].EventID == y {
+				pid := id
+				conc[x][i].OrderProposal = &pid
+				if order != "" {
+					conc[x][i].Order = order
+				}
+			}
+		}
+	}
+	reaches := func(from, to *parsed) bool { // path in the current graph?
+		stack, visited := []*parsed{from}, map[*parsed]bool{from: true}
+		for len(stack) > 0 {
+			n := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+			if n == to {
+				return true
+			}
+			for _, q := range deps[n] {
+				if !visited[q] {
+					visited[q] = true
+					stack = append(stack, q)
+				}
+			}
+		}
+		return false
+	}
+	// Proposal ids grow with time, so earlier settlements win any conflict;
+	// a vote that would contradict the graph (a cycle) is not applied.
+	orders := append([]chain.OrderProposal(nil), in.Orders...)
+	sort.Slice(orders, func(i, j int) bool { return orders[i].ID < orders[j].ID })
+	for _, o := range orders {
+		a, b := idx[o.A], idx[o.B]
+		if a == nil || b == nil || o.Room != in.Room || !isConc(a, b) {
+			continue // votes cannot override the signed causal order
+		}
+		first, second, settled := o.Before()
+		if !settled {
+			mark(o.A, o.B, "", o.ID)
+			mark(o.B, o.A, "", o.ID)
+			continue
+		}
+		f, s := idx[first], idx[second]
+		if reaches(s, f) {
+			continue
+		}
+		deps[f] = append(deps[f], s)
+		indeg[s]++
+		mark(first, second, "before", o.ID)
+		mark(second, first, "after", o.ID)
 	}
 	h := &readyHeap{}
 	for _, p := range evs {
@@ -553,7 +644,7 @@ func (v *Verifier) order(in *Input, evs []*parsed) []*parsed {
 		sort.Slice(rest, func(i, j int) bool { return less(rest[i], rest[j]) })
 		out = append(out, rest...)
 	}
-	return out
+	return out, conc
 }
 
 func idFromPath(path string) string {

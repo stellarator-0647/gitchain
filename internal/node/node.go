@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -69,6 +70,10 @@ type Node struct {
 	notify Notifier
 
 	writeMu sync.Mutex // serial queue for drafts, commits and content rewrites
+	// anchorMu serialises anchoring: the background round and a manual
+	// "anchor now" must not both submit the same head (the contract rejects
+	// the second as CommitAlreadyAnchored).
+	anchorMu sync.Mutex
 	draft   *Draft
 
 	stateMu    sync.RWMutex
@@ -79,6 +84,11 @@ type Node struct {
 	chainErr   string
 	roomInfo   *chain.RoomInfo
 	lastAnchor time.Time
+	checkpoints []chain.Checkpoint
+
+	// syncPaused stops fetch/push so a member can work "offline" (demo of
+	// divergent histories and the later merge); local writes continue.
+	syncPaused atomic.Bool
 
 	// DevSigner is reported to the UI when the API has a TEST signing key.
 	DevSigner bool
@@ -141,9 +151,14 @@ func (n *Node) Run(ctx context.Context) {
 	}
 }
 
+// SetSyncPaused turns the simulated offline mode on or off.
+func (n *Node) SetSyncPaused(p bool) { n.syncPaused.Store(p) }
+
 // Tick runs one sync, verification, cleanup and anchor round.
 func (n *Node) Tick(ctx context.Context) {
-	n.SyncOnce(ctx)
+	if !n.syncPaused.Load() {
+		n.SyncOnce(ctx)
+	}
 	if err := n.Refresh(ctx); err != nil {
 		log.Println("refresh:", err)
 	}
@@ -271,14 +286,22 @@ func (n *Node) Refresh(ctx context.Context) error {
 		n.setChainErr(err)
 		return err
 	}
+	// Ordering votes only refine the display order of concurrent events; a
+	// deployment without them (older Governance) still verifies everything else.
+	orders, err := n.reader.OrderProposals(ctx, n.cfg.Room)
+	if err != nil {
+		log.Println("order proposals unavailable:", err)
+		orders = nil
+	}
 	n.setChainErr(nil)
-	in.Checkpoints, in.Redactions = cps, reds
+	in.Checkpoints, in.Redactions, in.Orders = cps, reds, orders
 	res, err := n.verifier.Run(in)
 	if err != nil {
 		return err
 	}
 	n.stateMu.Lock()
 	n.result = res
+	n.checkpoints = cps
 	n.stateMu.Unlock()
 	n.notify("state", map[string]any{"head": res.Head, "health": res.Health, "alerts": res.Alerts})
 	return nil
@@ -318,6 +341,8 @@ type Status struct {
 	Pending    *Draft              `json:"pendingDraft,omitempty"`
 	DevSigner  bool                `json:"devSigner"`
 	Delegation *ActiveDelegation   `json:"delegation,omitempty"`
+	Members    int                 `json:"members"`
+	SyncPaused bool                `json:"syncPaused"`
 }
 
 // Status returns the current node status.
@@ -335,6 +360,10 @@ func (n *Node) Status() Status {
 	}
 	s.Pending = n.draft
 	s.DevSigner = n.DevSigner
+	s.SyncPaused = n.syncPaused.Load()
+	if n.roomInfo != nil {
+		s.Members = len(n.roomInfo.Members)
+	}
 	if d := n.activeDelegation(); d != nil {
 		s.Delegation = &ActiveDelegation{Delegate: d.Delegation.Delegate, ValidUntil: d.Delegation.ValidUntil, ID: d.Delegation.ID(n.domain)}
 	}
@@ -419,6 +448,14 @@ func (n *Node) PrepareTombstone(ctx context.Context, proposalID uint64) (*Draft,
 	if res := n.Result(); res != nil {
 		if _, ok := res.Get(p.Target); !ok {
 			return nil, errors.New("redaction target is not a known event")
+		}
+		// A target has at most one executed proposal, so one valid tombstone for
+		// it is enough; a second would add nothing but noise.
+		for _, m := range res.Messages {
+			if m.Kind == protocol.KindTombstone && m.Evidence != verify.EvidenceInvalid &&
+				m.Target != nil && *m.Target == p.Target {
+				return nil, fmt.Errorf("proposal %d already has a tombstone (signed by %s)", p.ID, m.Author.Hex())
+			}
 		}
 	}
 	n.writeMu.Lock()

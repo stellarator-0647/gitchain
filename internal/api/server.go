@@ -89,12 +89,44 @@ func New(n *node.Node, hub *Hub, opts Options) *gin.Engine {
 		}
 		c.JSON(http.StatusOK, ps)
 	})
+	a.GET("/orders", func(c *gin.Context) {
+		os, err := n.OrderProposals(c.Request.Context())
+		if err != nil {
+			fail(c, http.StatusServiceUnavailable, "chain_unavailable", err)
+			return
+		}
+		if os == nil {
+			os = []chain.OrderProposal{}
+		}
+		c.JSON(http.StatusOK, os)
+	})
 	a.POST("/anchor/now", func(c *gin.Context) {
-		if err := n.AnchorNow(c.Request.Context()); err != nil {
+		skipped, err := n.AnchorNowReport(c.Request.Context())
+		if err != nil {
 			fail(c, http.StatusConflict, "anchor_failed", err)
 			return
 		}
-		c.JSON(http.StatusOK, n.Status().Latest)
+		// skipped is "" when a checkpoint was submitted, else node.AnchorNothingNew / AnchorUnpushed.
+		c.JSON(http.StatusOK, gin.H{"anchored": skipped == "", "skipped": skipped, "latest": n.Status().Latest})
+	})
+	a.GET("/git", func(c *gin.Context) {
+		v, err := n.Git(40)
+		if err != nil {
+			fail(c, http.StatusInternalServerError, "git_failed", err)
+			return
+		}
+		c.JSON(http.StatusOK, v)
+	})
+	a.POST("/sync/pause", func(c *gin.Context) {
+		var req struct {
+			Paused bool `json:"paused"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			fail(c, http.StatusBadRequest, "bad_request", err)
+			return
+		}
+		n.SetSyncPaused(req.Paused)
+		c.JSON(http.StatusOK, gin.H{"paused": req.Paused})
 	})
 	if opts.DevKey != nil {
 		a.POST("/dev/send", s.devSend)
@@ -104,6 +136,8 @@ func New(n *node.Node, hub *Hub, opts Options) *gin.Engine {
 		a.POST("/dev/propose", s.devPropose)
 		a.POST("/dev/vote", s.devVote)
 		a.POST("/dev/execute", s.devExecute)
+		a.POST("/dev/order/propose", s.devProposeOrder)
+		a.POST("/dev/order/vote", s.devVoteOrder)
 	}
 	return r
 }
@@ -318,6 +352,39 @@ func (s *Server) devPropose(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"proposalId": id})
+}
+
+func (s *Server) devProposeOrder(c *gin.Context) {
+	var req struct {
+		A string `json:"a"`
+		B string `json:"b"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		fail(c, http.StatusBadRequest, "bad_request", err)
+		return
+	}
+	id, err := s.opts.DevGov.ProposeOrder(c.Request.Context(), s.n.Config().Room, common.HexToHash(req.A), common.HexToHash(req.B))
+	if err != nil {
+		fail(c, http.StatusConflict, "propose_failed", err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"orderId": id})
+}
+
+func (s *Server) devVoteOrder(c *gin.Context) {
+	var req struct {
+		ID     uint64 `json:"id"`
+		AFirst bool   `json:"aFirst"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		fail(c, http.StatusBadRequest, "bad_request", err)
+		return
+	}
+	if err := s.opts.DevGov.VoteOrder(c.Request.Context(), req.ID, req.AFirst); err != nil {
+		fail(c, http.StatusConflict, "vote_failed", err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"voted": true})
 }
 
 func (s *Server) devVote(c *gin.Context) {

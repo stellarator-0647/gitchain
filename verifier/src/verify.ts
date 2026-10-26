@@ -212,7 +212,19 @@ const governanceAbi = [
 ] as const;
 
 export type Step = { name: string; status: "pass" | "fail" | "unknown"; detail: string };
-export type Report = { ok: boolean; steps: Step[]; conclusion: string };
+/** Key facts for a human-readable summary; set only when the check reached them. */
+export type Facts = {
+  eventId?: Hex;
+  author?: Address;
+  delegate?: Address;
+  checkpointIndex?: number;
+  blockNo?: number;
+  blockTime?: number;
+  content?: "matched" | "mismatch" | "undisclosed" | "deleted";
+  proposalId?: number;
+  tombstoneBy?: Address;
+};
+export type Report = { ok: boolean; steps: Step[]; conclusion: string; facts: Facts };
 
 class Steps {
   list: Step[] = [];
@@ -223,6 +235,80 @@ class Steps {
 }
 
 const eq = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+
+export const BUNDLE_VERSION = 2;
+
+const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+const isBytes = (v: unknown, n: number) => typeof v === "string" && new RegExp(`^0x[0-9a-fA-F]{${n * 2}}$`).test(v);
+const isUint = (v: unknown, max = Number.MAX_SAFE_INTEGER) => typeof v === "number" && Number.isSafeInteger(v) && v >= 0 && v <= max;
+
+function eventProblem(v: unknown, where: string): string {
+  if (!isObj(v)) return `${where} is not an object`;
+  for (const k of ["room", "authorPrev", "seen", "target", "data1", "data2"]) if (!isBytes(v[k], 32)) return `${where}.${k} is not 32 bytes`;
+  if (!isBytes(v.author, 20)) return `${where}.author is not an address`;
+  if (!isUint(v.seq) || !isUint(v.ts)) return `${where}.seq/ts must be non-negative integers`;
+  if (!isUint(v.kind, 255)) return `${where}.kind must be 0-255`;
+  return "";
+}
+
+function signedProblem(v: unknown, where: string): string {
+  if (!isObj(v)) return `${where} is not an object`;
+  if (!isBytes(v.sig, 65)) return `${where}.sig is not 65 bytes`;
+  const ep = eventProblem(v.event, `${where}.event`);
+  if (ep) return ep;
+  if (v.delegation === undefined || v.delegation === null) return "";
+  const sd = v.delegation;
+  if (!isObj(sd) || !isObj(sd.delegation) || !isBytes(sd.walletSig, 65)) return `${where}.delegation is malformed`;
+  const d = sd.delegation;
+  if (!isBytes(d.room, 32) || !isBytes(d.wallet, 20) || !isBytes(d.delegate, 20) ||
+      !isUint(d.validFrom) || !isUint(d.validUntil) || !isUint(d.kinds)) return `${where}.delegation fields are malformed`;
+  return "";
+}
+
+function inclusionProblem(v: unknown, where: string): string {
+  if (v === null) return "";
+  if (!isObj(v)) return `${where} is not an object`;
+  if (!isUint(v.checkpointIndex) || !isUint(v.count) || !isUint(v.leafIndex)) return `${where} indexes must be non-negative integers`;
+  if (!isBytes(v.root, 32)) return `${where}.root is not 32 bytes`;
+  if (!Array.isArray(v.proof) || !v.proof.every((h) => isBytes(h, 32))) return `${where}.proof must be a list of 32-byte hashes`;
+  return "";
+}
+
+/** Shape check run before any hashing or chain read; returns "" when the bundle is well formed. */
+export function bundleProblem(b: unknown): string {
+  if (!isObj(b)) return "bundle is not a JSON object";
+  if (b.version !== BUNDLE_VERSION) return `unsupported bundle version ${JSON.stringify(b.version)} (only ${BUNDLE_VERSION})`;
+  if (!isUint(b.chainId) || b.chainId === 0) return "chainId must be a positive integer";
+  if (!isBytes(b.room, 32) || !isBytes(b.eventId, 32)) return "room/eventId must be 32 bytes";
+  const c = b.contracts;
+  if (!isObj(c) || !isBytes(c.registry, 20) || !isBytes(c.anchorLog, 20) || !isBytes(c.governance, 20)) return "contracts must be three addresses";
+  const sp = signedProblem(b.event, "event");
+  if (sp) return sp;
+  if (b.content !== null) {
+    if (!isObj(b.content) || !isBytes(b.content.salt, 32) || typeof b.content.body !== "string") return "content must be null or {salt, body}";
+  }
+  const ip = inclusionProblem(b.inclusion, "inclusion");
+  if (ip) return ip;
+  if (b.redaction !== null) {
+    const r = b.redaction;
+    if (!isObj(r) || !isUint(r.proposalId)) return "redaction must be null or carry a proposalId";
+    const tp = signedProblem(r.tombstone, "redaction.tombstone");
+    if (tp) return tp;
+    const tip = inclusionProblem(r.tombstoneInclusion, "redaction.tombstoneInclusion");
+    if (tip) return tip;
+  }
+  return "";
+}
+
+/** Reads fixed membership; a failed read is recorded as unknown and returns null. */
+async function readMember(s: Steps, label: string, c: PublicClient, m: Manifest, room: Hex, who: Address): Promise<boolean | null> {
+  try {
+    return await c.readContract({ address: m.registry, abi: registryAbi, functionName: "isMember", args: [room, who] });
+  } catch (e) {
+    s.unknown(label, `chain read failed: ${(e as Error).message.split("\n")[0]}`);
+    return null;
+  }
+}
 
 async function checkSigned(s: Steps, label: string, se: SignedEvent, m: Manifest): Promise<Hex | null> {
   const id = eventId(se.event, m);
@@ -303,19 +389,25 @@ async function checkInclusion(s: Steps, label: string, c: PublicClient, m: Manif
 /** Verifies a proof bundle against a trusted manifest. */
 export async function verifyBundle(b: ProofBundle, m: Manifest, client?: PublicClient): Promise<Report> {
   const s = new Steps();
+  const problem = bundleProblem(b);
+  if (problem) {
+    s.fail("format", problem);
+    return { ok: false, steps: s.list, conclusion: "Not a well-formed version 2 proof bundle.", facts: {} };
+  }
   const c = client ?? (createPublicClient({ transport: http(m.rpc) }) as PublicClient);
+  const facts: Facts = { eventId: b.eventId, author: b.event.event.author, delegate: b.event.delegation?.delegation.delegate };
 
   // 1. The bundle must reference the trusted deployment, not bring its own.
   if (b.chainId !== m.chainId || !isAddressEqual(b.contracts.registry, m.registry) ||
       !isAddressEqual(b.contracts.anchorLog, m.anchorLog) || !isAddressEqual(b.contracts.governance, m.governance)) {
     s.fail("deployment", "bundle references a different chain or contracts than the trusted manifest");
-    return { ok: false, steps: s.list, conclusion: "Not verifiable against this deployment." };
+    return { ok: false, steps: s.list, conclusion: "Not verifiable against this deployment.", facts };
   }
   s.pass("deployment", `chain ${m.chainId}, registry ${m.registry}`);
 
   // 2. Event id and signature.
   const id = await checkSigned(s, "event", b.event, m);
-  if (!id) return { ok: false, steps: s.list, conclusion: "The signature is invalid." };
+  if (!id) return { ok: false, steps: s.list, conclusion: "The signature is invalid.", facts };
   if (!eq(id, b.eventId)) s.fail("event id", `recomputed ${id}, bundle says ${b.eventId}`);
   else s.pass("event id", id);
 
@@ -325,18 +417,23 @@ export async function verifyBundle(b: ProofBundle, m: Manifest, client?: PublicC
     room = await c.readContract({ address: m.registry, abi: registryAbi, functionName: "roomInfo", args: [b.room] });
   } catch (e) {
     s.unknown("room", `chain read failed: ${(e as Error).message.split("\n")[0]}`);
-    return { ok: false, steps: s.list, conclusion: "Cannot decide: the chain could not be read." };
+    return { ok: false, steps: s.list, conclusion: "Cannot decide: the chain could not be read.", facts };
   }
   if (room.createdBlock === 0n || !eq(b.event.event.room, b.room)) {
     s.fail("room", "unknown room or event belongs to another room");
-    return { ok: false, steps: s.list, conclusion: "The event does not belong to this room." };
+    return { ok: false, steps: s.list, conclusion: "The event does not belong to this room.", facts };
   }
-  const member = await c.readContract({ address: m.registry, abi: registryAbi, functionName: "isMember", args: [b.room, b.event.event.author] });
-  if (!member) s.fail("membership", `${b.event.event.author} is not a member`);
-  else s.pass("membership", `${b.event.event.author} is a fixed member since block ${room.createdBlock}`);
+  const member = await readMember(s, "membership", c, m, b.room, b.event.event.author);
+  if (member === false) s.fail("membership", `${b.event.event.author} is not a member`);
+  else if (member) s.pass("membership", `${b.event.event.author} is a fixed member since block ${room.createdBlock}`);
 
   // 4. Anchoring.
   const cp = await checkInclusion(s, "event", c, m, b.room, b.inclusion, id, b.event, room.anchorWriter, room.createdBlock);
+  if (cp && b.inclusion) {
+    facts.checkpointIndex = b.inclusion.checkpointIndex;
+    facts.blockNo = Number(cp.blockNo);
+    facts.blockTime = Number(cp.blockTime);
+  }
 
   // 5. Content or authorised deletion.
   const e = b.event.event;
@@ -361,20 +458,30 @@ export async function verifyBundle(b: ProofBundle, m: Manifest, client?: PublicC
     } else {
       const tid = await checkSigned(s, "tombstone", r.tombstone, m);
       if (tid) {
-        const tm = await c.readContract({ address: m.registry, abi: registryAbi, functionName: "isMember", args: [b.room, t.author] });
-        if (!tm) s.fail("tombstone: membership", `${t.author} is not a member`);
+        const tm = await readMember(s, "tombstone: membership", c, m, b.room, t.author);
+        if (tm === false) s.fail("tombstone: membership", `${t.author} is not a member`);
+        else if (tm) s.pass("tombstone: membership", `${t.author} is a member`);
         await checkInclusion(s, "tombstone", c, m, b.room, r.tombstoneInclusion, tid, r.tombstone, room.anchorWriter, room.createdBlock);
       }
     }
     if (b.content) s.fail("content", "a deleted message must not carry its body");
     what = `was later deleted under proposal ${r.proposalId}`;
+    facts.content = "deleted";
+    facts.proposalId = r.proposalId;
+    facts.tombstoneBy = t.author;
   } else if (b.content) {
     if (e.kind !== KIND.message) s.fail("content", "content attached to a non-message event");
-    else if (!eq(contentCommit(b.content.salt, b.content.body), e.data1)) s.fail("content", "body does not match the signed commitment");
-    else s.pass("content", "body matches the signed commitment");
+    else if (!eq(contentCommit(b.content.salt, b.content.body), e.data1)) {
+      s.fail("content", "body does not match the signed commitment");
+      facts.content = "mismatch";
+    } else {
+      s.pass("content", "body matches the signed commitment");
+      facts.content = "matched";
+    }
     what = "its supplied body matches the signed commitment";
   } else {
     s.pass("content", "body not disclosed");
+    facts.content = "undisclosed";
     what = "its body was not disclosed";
   }
 
@@ -383,5 +490,5 @@ export async function verifyBundle(b: ProofBundle, m: Manifest, client?: PublicC
   const conclusion = ok
     ? `Event ${id} was signed by ${e.author}, ${when}; ${what}.`
     : `Verification did not pass: ${s.list.filter((x) => x.status !== "pass").map((x) => `${x.name} (${x.status})`).join(", ")}.`;
-  return { ok, steps: s.list, conclusion };
+  return { ok, steps: s.list, conclusion, facts };
 }

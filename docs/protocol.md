@@ -95,7 +95,7 @@ content  manifest.json                               {generation, deleted[]}
   redaction {proposalId, tombstone{event, sig}, tombstoneInclusion} | null }
 ```
 
-验证器（`verifier/`）步骤：部署一致 → 签名与 eventId → 房间与成员 → 检查点（root/count/提交者/区块）→ Merkle 路径 → 正文承诺，或删除提案已执行 + 墓碑签名、成员与锚定。链读取失败记为 unknown，不记为通过。
+验证器（`verifier/`）步骤：格式检查（version 必须为 2，字段齐全，整数非负，字节长度正确；不合格直接失败，不读链）→ 部署一致 → 签名与 eventId → 房间与成员 → 检查点（root/count/提交者/区块）→ Merkle 路径 → 正文承诺，或删除提案已执行 + 墓碑签名、成员与锚定。链读取失败（含成员查询、墓碑作者成员查询）记为 unknown，不记为通过。
 
 ## 10. 本地 API 安全
 
@@ -120,3 +120,21 @@ SignedEvent  = { event, sig, delegation?: { delegation, walletSig } }          /
 ## 2026-10-17 授权与客户端补充
 
 委托事件首次覆盖的检查点时间必须位于闭区间 [validFrom, validUntil]；不再仅检查截止时间。节点本地安装与使用还要求当前时间位于 [validFrom, validUntil)。时间无效仍不阻塞锚定。浏览器签授权前比较 typedData 与授权 JSON 摘要，并核对部署与请求权限。桌面端的能力/钱包边界见 CLIENT.md，完整修改见 CHANGES-2026-10-17.md。
+
+## 12. 并发消息与链上排序投票
+
+**并发的判定（只用签名数据）。** 对两条不同作者的有效事件 A、B：若 A 在 B 签名时 `seen` 提交的事件树中，则 A 先于 B（B 签名时已看到 A，且无法事后否认）；`seen` 是 Git 树，已包含此前合并进来的全部事件，因此间接看到也算。若 A 不在 B 的 `seen` 树中、B 也不在 A 的 `seen` 树中，则二者**并发**：签名无法证明谁先。同一作者的事件由序号链定序，永不并发。节点在 `/api/history` 的每条消息上给出 `concurrent[]`。
+
+**默认显示顺序**（第 8 节）对并发事件只是一致的排列规则，不构成先后证据。
+
+**排序投票（Governance 合约）。**
+
+```
+proposeOrder(room, a, b) -> id        成员发起；同一对事件同时只能有一个进行中的投票，已定的不能重开，过期未定可重开
+voteOrder(id, aFirst)                 每个成员一票；某一方票数 × 2 > 成员数时立即定案（outcome 1 = a 在前，2 = b 在前）
+orderProposal(id) / OrderProposed / OrderVoted / OrderSettled 事件
+```
+
+合约看不到 Git，只记录成员的约定。节点读取全部排序投票，按编号从小到大处理：只对**确实并发**的一对事件、且不会与已有顺序形成环时，加入“先 → 后”的排序约束；签名已证明的因果顺序不能被投票推翻。所有节点读取同一链上状态，因而得到相同顺序。合约读取失败时节点照常验证其余内容，只是不应用排序。
+
+**界限。** 投票确定的是成员的约定顺序，不是物理上的发送时刻；投票本身公开在链上（谁对哪两条事件投了哪一方），每票需要一笔链上交易。

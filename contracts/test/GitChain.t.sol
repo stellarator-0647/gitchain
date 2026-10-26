@@ -251,4 +251,92 @@ contract GitChainTest is Test {
         vm.expectRevert(Governance.UnknownProposal.selector);
         gov.proposal(7);
     }
+
+    // ---- Governance: ordering concurrent events ----
+
+    bytes32 constant EA = keccak256("event a");
+    bytes32 constant EB = keccak256("event b");
+
+    function _proposeOrder() internal returns (uint256 id) {
+        vm.prank(alice);
+        id = gov.proposeOrder(ROOM, EA, EB);
+    }
+
+    function test_OrderSettledByMajority() public {
+        uint256 id = _proposeOrder();
+        vm.prank(alice);
+        gov.voteOrder(id, true);
+        assertEq(gov.orderProposal(id).outcome, 0); // one of three is not a majority
+        vm.prank(bob);
+        gov.voteOrder(id, false);
+        vm.expectEmit(true, true, false, true);
+        emit Governance.OrderSettled(id, ROOM, EB, EA);
+        vm.prank(carol);
+        gov.voteOrder(id, false); // b now has 2 of 3
+        Governance.OrderProposal memory p = gov.orderProposal(id);
+        assertEq(p.outcome, 2);
+        assertEq(p.forA, 1);
+        assertEq(p.forB, 2);
+    }
+
+    function test_RevertWhen_VoteAfterOrderSettled() public {
+        uint256 id = _proposeOrder();
+        vm.prank(alice);
+        gov.voteOrder(id, true);
+        vm.prank(bob);
+        gov.voteOrder(id, true);
+        vm.prank(carol);
+        vm.expectRevert(Governance.AlreadyOrdered.selector);
+        gov.voteOrder(id, false);
+    }
+
+    function test_RevertWhen_PairAlreadyOpenOrSettled() public {
+        uint256 id = _proposeOrder();
+        vm.prank(bob); // same pair, either way round
+        vm.expectRevert(Governance.OrderOpen.selector);
+        gov.proposeOrder(ROOM, EB, EA);
+        vm.prank(alice);
+        gov.voteOrder(id, true);
+        vm.prank(bob);
+        gov.voteOrder(id, true);
+        vm.prank(carol);
+        vm.expectRevert(Governance.AlreadyOrdered.selector);
+        gov.proposeOrder(ROOM, EA, EB);
+    }
+
+    function test_OrderRetryAfterExpiry() public {
+        uint256 id = _proposeOrder();
+        vm.roll(block.number + 101);
+        vm.prank(bob);
+        vm.expectRevert(Governance.VotingClosed.selector);
+        gov.voteOrder(id, true);
+        vm.prank(bob);
+        assertEq(gov.proposeOrder(ROOM, EB, EA), 2);
+    }
+
+    function test_RevertWhen_OrderBadInput() public {
+        vm.prank(mallory);
+        vm.expectRevert(Governance.NotMember.selector);
+        gov.proposeOrder(ROOM, EA, EB);
+        vm.startPrank(alice);
+        vm.expectRevert(Governance.SameEvent.selector);
+        gov.proposeOrder(ROOM, EA, EA);
+        vm.expectRevert(Governance.ZeroTarget.selector);
+        gov.proposeOrder(ROOM, EA, bytes32(0));
+        vm.stopPrank();
+        vm.expectRevert(Governance.UnknownOrder.selector);
+        gov.orderProposal(1);
+    }
+
+    function test_RevertWhen_DoubleOrderVoteOrNonMember() public {
+        uint256 id = _proposeOrder();
+        vm.startPrank(alice);
+        gov.voteOrder(id, true);
+        vm.expectRevert(Governance.AlreadyVoted.selector);
+        gov.voteOrder(id, false);
+        vm.stopPrank();
+        vm.prank(mallory);
+        vm.expectRevert(Governance.NotMember.selector);
+        gov.voteOrder(id, true);
+    }
 }

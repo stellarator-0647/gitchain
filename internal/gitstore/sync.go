@@ -194,3 +194,68 @@ func (r *Repo) HasRef(ref string) bool {
 	_, err := r.revParse(ref)
 	return err == nil
 }
+
+// Commit is one main-branch commit, for the UI's Git view.
+type Commit struct {
+	SHA     string   `json:"sha"`
+	Parents []string `json:"parents"`
+	Time    int64    `json:"time"`
+	Subject string   `json:"subject"`
+	Files   []string `json:"files"`
+	Pushed  bool     `json:"pushed"` // reachable from origin/main
+}
+
+// Log returns the newest n commits of main, newest first. Merge commits list
+// no files (the merged events are in the commits of the other parent).
+func (r *Repo) Log(n int) ([]Commit, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out, err := r.git("log", "-n", strconv.Itoa(n), "--no-renames", "--name-only",
+		"--format=%x1e%H%x1f%P%x1f%ct%x1f%s", "refs/heads/"+MainBranch)
+	if err != nil {
+		return nil, err
+	}
+	pushed := map[string]bool{}
+	if _, err := r.revParse(remoteRef(MainBranch)); err == nil {
+		if lst, err := r.git("rev-list", "-n", strconv.Itoa(n*4), remoteRef(MainBranch)); err == nil {
+			for _, sha := range strings.Fields(lst) {
+				pushed[sha] = true
+			}
+		}
+	}
+	var commits []Commit
+	for _, rec := range strings.Split(out, "\x1e") {
+		rec = strings.Trim(rec, "\r\n")
+		if rec == "" {
+			continue
+		}
+		lines := strings.Split(rec, "\n")
+		f := strings.SplitN(lines[0], "\x1f", 4)
+		if len(f) != 4 {
+			continue
+		}
+		t, _ := strconv.ParseInt(f[2], 10, 64)
+		c := Commit{SHA: f[0], Parents: strings.Fields(f[1]), Time: t, Subject: f[3], Files: []string{}, Pushed: pushed[f[0]]}
+		for _, l := range lines[1:] {
+			if l = strings.TrimSpace(l); l != "" {
+				c.Files = append(c.Files, l)
+			}
+		}
+		if c.Parents == nil {
+			c.Parents = []string{}
+		}
+		commits = append(commits, c)
+	}
+	return commits, nil
+}
+
+// RemoteHead returns origin/main after the last fetch, or "" if unknown.
+func (r *Repo) RemoteHead() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	sha, err := r.revParse(remoteRef(MainBranch))
+	if err != nil {
+		return ""
+	}
+	return sha
+}

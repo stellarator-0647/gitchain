@@ -295,6 +295,68 @@ func (g EthGovernor) Execute(ctx context.Context, id uint64) error {
 	return err
 }
 
+func (g EthGovernor) ProposeOrder(ctx context.Context, room, a, b common.Hash) (uint64, error) {
+	rc, err := g.Eth.Transact(ctx, g.Key, g.Eth.Addr.Governance, g.Eth.gov, "proposeOrder", room, a, b)
+	if err != nil {
+		return 0, err
+	}
+	for _, l := range rc.Logs {
+		if len(l.Topics) > 1 && l.Topics[0] == g.Eth.gov.Events["OrderProposed"].ID {
+			return new(big.Int).SetBytes(l.Topics[1][:]).Uint64(), nil
+		}
+	}
+	return 0, errors.New("no OrderProposed event in receipt")
+}
+
+func (g EthGovernor) VoteOrder(ctx context.Context, id uint64, aFirst bool) error {
+	_, err := g.Eth.Transact(ctx, g.Key, g.Eth.Addr.Governance, g.Eth.gov, "voteOrder", new(big.Int).SetUint64(id), aFirst)
+	return err
+}
+
+type orderTuple struct {
+	Room          [32]byte
+	A             [32]byte
+	B             [32]byte
+	Proposer      common.Address
+	CreatedBlock  uint64
+	DeadlineBlock uint64
+	ForA          uint32
+	ForB          uint32
+	Outcome       uint8
+}
+
+// OrderProposals lists the room's ordering proposals (from OrderProposed logs)
+// with their current state.
+func (e *Eth) OrderProposals(ctx context.Context, room common.Hash) ([]OrderProposal, error) {
+	head, err := e.ConfirmedHead(ctx)
+	if err != nil {
+		return nil, err
+	}
+	ev := e.gov.Events["OrderProposed"]
+	ls, err := e.Client.FilterLogs(ctx, ethereum.FilterQuery{
+		FromBlock: big.NewInt(0), ToBlock: new(big.Int).SetUint64(head), Addresses: []common.Address{e.Addr.Governance},
+		Topics: [][]common.Hash{{ev.ID}, nil, {room}},
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]OrderProposal, 0, len(ls))
+	for _, l := range ls {
+		if len(l.Topics) < 2 {
+			continue
+		}
+		id := new(big.Int).SetBytes(l.Topics[1][:])
+		res, err := e.call(ctx, head, e.Addr.Governance, e.gov, "orderProposal", id)
+		if err != nil {
+			return nil, err
+		}
+		o := *abi.ConvertType(res[0], new(orderTuple)).(*orderTuple)
+		out = append(out, OrderProposal{ID: id.Uint64(), Room: o.Room, A: o.A, B: o.B, Proposer: o.Proposer,
+			CreatedBlock: o.CreatedBlock, DeadlineBlock: o.DeadlineBlock, ForA: o.ForA, ForB: o.ForB, Outcome: o.Outcome})
+	}
+	return out, nil
+}
+
 // Transact sends a contract call signed by key and waits for its receipt.
 func (e *Eth) Transact(ctx context.Context, key *ecdsa.PrivateKey, to common.Address, a abi.ABI, method string, args ...any) (*types.Receipt, error) {
 	data, err := a.Pack(method, args...)

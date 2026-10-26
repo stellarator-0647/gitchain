@@ -22,6 +22,8 @@ type Memory struct {
 	proposals    []Proposal
 	votes        map[uint64]map[common.Address]bool
 	executedAt   map[uint64]uint64
+	orders       []OrderProposal
+	orderVotes   map[uint64]map[common.Address]bool
 	VotingBlocks uint64
 	// TimeBase is the simulated timestamp of block 0; each block adds 12 s.
 	TimeBase uint64
@@ -34,6 +36,7 @@ func NewMemory() *Memory {
 		checkpoints:  map[common.Hash][]Checkpoint{},
 		votes:        map[uint64]map[common.Address]bool{},
 		executedAt:   map[uint64]uint64{},
+		orderVotes:   map[uint64]map[common.Address]bool{},
 		VotingBlocks: 100,
 		TimeBase:     1_700_000_000,
 	}
@@ -225,6 +228,70 @@ func (m *Memory) ExecutedRedactions(_ context.Context, room common.Hash) ([]Reda
 	for _, p := range m.proposals {
 		if p.Room == room && p.Executed {
 			out = append(out, Redaction{ProposalID: p.ID, Target: p.Target, BlockNo: m.executedAt[p.ID]})
+		}
+	}
+	return out, nil
+}
+
+// ProposeOrder mirrors Governance.proposeOrder: one live proposal per pair.
+func (m *Memory) ProposeOrder(sender common.Address, room, a, b common.Hash) (uint64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !m.rooms[room].IsMember(sender) {
+		return 0, errors.New("not a member")
+	}
+	if a == (common.Hash{}) || b == (common.Hash{}) || a == b {
+		return 0, errors.New("bad pair")
+	}
+	for _, o := range m.orders {
+		if o.Room == room && ((o.A == a && o.B == b) || (o.A == b && o.B == a)) &&
+			(o.Outcome != OrderOpen || m.block+1 <= o.DeadlineBlock) {
+			return 0, errors.New("pair already open or settled")
+		}
+	}
+	blk := m.tick()
+	id := uint64(len(m.orders) + 1)
+	m.orders = append(m.orders, OrderProposal{ID: id, Room: room, A: a, B: b, Proposer: sender,
+		CreatedBlock: blk, DeadlineBlock: blk + m.VotingBlocks})
+	m.orderVotes[id] = map[common.Address]bool{}
+	return id, nil
+}
+
+// VoteOrder mirrors Governance.voteOrder; a majority settles at once.
+func (m *Memory) VoteOrder(sender common.Address, id uint64, aFirst bool) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if id == 0 || id > uint64(len(m.orders)) {
+		return errors.New("no such order proposal")
+	}
+	o := &m.orders[id-1]
+	members := len(m.rooms[o.Room].Members)
+	if !m.rooms[o.Room].IsMember(sender) || m.orderVotes[id][sender] || o.Outcome != OrderOpen || m.block+1 > o.DeadlineBlock {
+		return errors.New("order vote rejected")
+	}
+	m.tick()
+	m.orderVotes[id][sender] = true
+	count := &o.ForB
+	if aFirst {
+		count = &o.ForA
+	}
+	*count++
+	if int(*count)*2 > members {
+		o.Outcome = OrderBFirst
+		if aFirst {
+			o.Outcome = OrderAFirst
+		}
+	}
+	return nil
+}
+
+func (m *Memory) OrderProposals(_ context.Context, room common.Hash) ([]OrderProposal, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []OrderProposal
+	for _, o := range m.orders {
+		if o.Room == room {
+			out = append(out, o)
 		}
 	}
 	return out, nil

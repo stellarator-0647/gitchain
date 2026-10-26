@@ -62,6 +62,11 @@ const governanceAbi = [
   { type: "function", name: "vote", stateMutability: "nonpayable",
     inputs: [{ name: "id", type: "uint256" }, { name: "support", type: "bool" }], outputs: [] },
   { type: "function", name: "execute", stateMutability: "nonpayable", inputs: [{ name: "id", type: "uint256" }], outputs: [] },
+  { type: "function", name: "proposeOrder", stateMutability: "nonpayable",
+    inputs: [{ name: "room", type: "bytes32" }, { name: "a", type: "bytes32" }, { name: "b", type: "bytes32" }],
+    outputs: [{ type: "uint256" }] },
+  { type: "function", name: "voteOrder", stateMutability: "nonpayable",
+    inputs: [{ name: "id", type: "uint256" }, { name: "aFirst", type: "bool" }], outputs: [] },
 ] as const;
 
 async function clients(st: Status) {
@@ -73,7 +78,7 @@ async function clients(st: Status) {
 }
 
 /** Sends a governance transaction from the wallet and waits for it. */
-export async function governance(st: Status, fn: "proposeRedaction" | "vote" | "execute", args: readonly unknown[]) {
+export async function governance(st: Status, fn: "proposeRedaction" | "vote" | "execute" | "proposeOrder" | "voteOrder", args: readonly unknown[]) {
   const { wallet, pub } = await clients(st);
   const hash = await wallet.writeContract({ address: st.contracts.governance, abi: governanceAbi, functionName: fn, args: args as never });
   const rc = await pub.waitForTransactionReceipt({ hash });

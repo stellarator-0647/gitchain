@@ -60,6 +60,39 @@ type Proposal struct {
 	Executed      bool           `json:"executed"`
 }
 
+// Order outcomes of an OrderProposal.
+const (
+	OrderOpen   uint8 = 0
+	OrderAFirst uint8 = 1
+	OrderBFirst uint8 = 2
+)
+
+// OrderProposal mirrors Governance.orderProposal: the members' vote on
+// whether event A comes before event B.
+type OrderProposal struct {
+	ID            uint64         `json:"id"`
+	Room          common.Hash    `json:"room"`
+	A             common.Hash    `json:"a"`
+	B             common.Hash    `json:"b"`
+	Proposer      common.Address `json:"proposer"`
+	CreatedBlock  uint64         `json:"createdBlock"`
+	DeadlineBlock uint64         `json:"deadlineBlock"`
+	ForA          uint32         `json:"forA"`
+	ForB          uint32         `json:"forB"`
+	Outcome       uint8          `json:"outcome"`
+}
+
+// Before returns the agreed (first, second) pair; ok is false while open.
+func (o OrderProposal) Before() (first, second common.Hash, ok bool) {
+	switch o.Outcome {
+	case OrderAFirst:
+		return o.A, o.B, true
+	case OrderBFirst:
+		return o.B, o.A, true
+	}
+	return common.Hash{}, common.Hash{}, false
+}
+
 // Redaction is an executed deletion authorisation.
 type Redaction struct {
 	ProposalID uint64      `json:"proposalId"`
@@ -77,6 +110,7 @@ type Reader interface {
 	Proposal(ctx context.Context, id uint64) (Proposal, error)
 	ExecutedRedactions(ctx context.Context, room common.Hash) ([]Redaction, error)
 	Proposals(ctx context.Context, room common.Hash) ([]Proposal, error)
+	OrderProposals(ctx context.Context, room common.Hash) ([]OrderProposal, error)
 	ConfirmedHead(ctx context.Context) (uint64, error)
 }
 
@@ -86,6 +120,8 @@ type Governor interface {
 	Propose(ctx context.Context, room, target, reasonHash common.Hash) (uint64, error)
 	Vote(ctx context.Context, id uint64, support bool) error
 	Execute(ctx context.Context, id uint64) error
+	ProposeOrder(ctx context.Context, room, a, b common.Hash) (uint64, error)
+	VoteOrder(ctx context.Context, id uint64, aFirst bool) error
 }
 
 // AnchorWriter submits checkpoints. Only the room's anchorWriter may call it

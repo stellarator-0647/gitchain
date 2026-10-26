@@ -13,6 +13,7 @@
 | 证明“这条消息是某个钱包发的，且不晚于某时存在” | EIP-712 钱包签名 + 事件集合的 Merkle 根批量锚定到链上 |
 | 发现共享 Git 服务器篡改、扣留或分视图 | 客户端用签名、作者序号链和链上检查点独立核验，不信任远端 |
 | 按多数同意删除，并且删除本身可审计 | 链上投票授权 → 墓碑事件 → 各节点清理正文，承诺保留 |
+| 两人同时发消息，需要确定先后 | 用签名中的 `seen` 识别“并发”的消息；需要时成员在链上投票定序，过半即生效，签名证明的因果顺序不可推翻 |
 | 断网时各自记录，联网后自动合并 | 签名与 Git commit 解耦，Git 分叉后合并不影响签名 |
 | 把单条消息交给第三方核验 | 导出证明包，独立验证器只读链，不需要节点或 Git |
 | 不想每条消息都弹钱包 | 钱包签一次短期授权（≤ 2 小时），浏览器临时密钥代签消息 |
@@ -33,8 +34,8 @@
 | 验证器：签名/成员/序号链/双重发送/正文/检查点/删除授权/授权时间，确定性排序，合并前隔离 | `internal/verify` | 完成 |
 | 链接口：内存实现与 JSON-RPC 实现 | `internal/chain` | 完成 |
 | 节点编排与本地 API | `internal/node`、`internal/api`、`cmd/gitchain` | 完成；三节点端到端测试 |
-| 合约 | `contracts/` | 完成；25 个 Foundry 测试 |
-| 独立验证器与跨语言向量 | `verifier/`、`testdata/vectors.json` | 完成；15 个向量测试 |
+| 合约 | `contracts/` | 完成；31 个 Foundry 测试（含并发排序投票） |
+| 独立验证器与跨语言向量 | `verifier/`、`testdata/vectors.json` | 完成；15 个跨语言向量 + 14 个证明包测试 |
 | 浏览器前端 | `web/` | 完成；测试签名全流程，MetaMask 签名、治理交易与短期授权已在 Chrome 实测 |
 | Windows 桌面客户端（Electron） | `desktop/` | 完成；打包与冒烟测试通过，钱包签名需在系统浏览器中进行 |
 | 加分项②–⑥：主动回执、合同协商分支、更换锚定者、增量验证、Sepolia | — | 未开始 |
@@ -101,6 +102,9 @@ Windows 下 `infra/scripts/verify.ps1` 一次跑完全部检查；GitHub Actions
 | DELETE | `/api/events/draft/:id` | 释放草稿 |
 | GET | `/api/proof/:eventId?content=1` | 证明包；删除的消息不含正文 |
 | GET | `/api/proposals` | 删除提案及链上状态 |
+| GET | `/api/orders` | 并发消息的排序投票及链上状态 |
+| GET | `/api/git` | 本地 Git 仓库视图：main / origin/main、最近提交、各检查点对应的提交 |
+| POST | `/api/sync/pause` | `{paused}`，暂停 / 恢复同步（模拟断网） |
 | POST | `/api/delegations/draft` | `{delegate, seconds}` → 待钱包签名的授权 |
 | POST / DELETE | `/api/delegations` | 安装 / 停用临时密钥授权 |
 | POST | `/api/anchor/now` | 仅锚定节点（演示用） |

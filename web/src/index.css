@@ -75,6 +75,8 @@ input, select, textarea {
 .banner.error { background: var(--bad-bg); color: var(--bad); }
 .banner.info { background: var(--ok-bg); color: var(--ok); }
 .banner.dev { background: var(--dev-bg); color: var(--dev); }
+.banner.inline { border: 1px solid var(--line); border-radius: 6px; }
+button.older { align-self: center; margin-bottom: 8px; }
 
 .layout { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 360px; min-height: 0; }
 .chat { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); }
@@ -109,6 +111,7 @@ input, select, textarea {
 .row.end { justify-content: flex-end; }
 .grow { flex: 1; min-width: 0; }
 .pill.bad { background: var(--bad-bg); color: var(--bad); }
+.pill.muted { background: var(--line); color: var(--muted); }
 
 .props { list-style: none; margin: 0; padding: 0; overflow-y: auto; }
 .props li { padding: 12px 16px; border-bottom: 1px solid var(--line); }
@@ -128,6 +131,31 @@ input, select, textarea {
 .report.fail { border-color: var(--bad); }
 .report ol { padding-left: 18px; margin: 0; }
 .report li { margin: 4px 0; overflow-wrap: anywhere; }
+.report .conclusion { overflow-wrap: anywhere; font-size: 12px; color: var(--muted); }
+.side { min-width: 0; overflow-x: hidden; }
+.verify, .git { overflow-y: auto; }
+.summary { border-radius: 8px; padding: 10px 12px; margin-top: 12px; }
+.summary.pass { background: var(--ok-bg); }
+.summary.fail { background: var(--bad-bg); }
+.summary h4 { margin: 0 0 6px; }
+.summary dl { display: grid; grid-template-columns: 84px 1fr; gap: 4px 8px; margin: 0; font-size: 13px; }
+.summary dt { color: var(--muted); }
+.summary dd { margin: 0; overflow-wrap: anywhere; }
+.git .heads { display: grid; grid-template-columns: 96px 1fr; gap: 4px 8px; margin: 0 0 10px; font-size: 13px; }
+.git .heads dt { color: var(--muted); }
+.git .heads dd { margin: 0; overflow-wrap: anywhere; }
+.git ul { list-style: none; margin: 0; padding: 0; }
+.git li { position: relative; padding: 6px 0 6px 22px; border-left: 2px solid var(--line); margin-left: 6px; font-size: 13px; }
+.git li::before { content: ""; position: absolute; left: -7px; top: 10px; width: 12px; height: 12px; border-radius: 50%; background: var(--accent); }
+.git li.merge::before { background: #9333ea; }
+.git li.local::before { background: #f59e0b; }
+.git .sha { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+.git .tag { display: inline-block; font-size: 11px; padding: 0 6px; border-radius: 4px; margin-left: 4px; background: var(--ok-bg); color: var(--ok); }
+.git .tag.cp { background: #e0e7ff; color: #3730a3; }
+.git .tag.loc { background: #fef3c7; color: #92400e; }
+.git .tag.mg { background: #f3e8ff; color: #6b21a8; }
+.git .file { font-family: ui-monospace, Consolas, monospace; font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
+.banner.offline { background: #fef3c7; color: #92400e; }
 .report .st { font-weight: 600; margin-right: 6px; }
 .report li.pass .st { color: var(--ok); }
 .report li.fail .st { color: var(--bad); }
@@ -144,3 +172,10 @@ input, select, textarea {
   .layout { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) 320px; }
   .chat { border-right: none; border-bottom: 1px solid var(--line); }
 }
+.b.conc { border: none; cursor: pointer; background: #fef3c7; color: #92400e; font: inherit; }
+.b.conc.done { background: var(--ok-bg); color: var(--ok); }
+.b.ok { background: var(--ok-bg); color: var(--ok); }
+.b.warn { background: var(--warn-bg); color: var(--warn); }
+.conc-list { margin-top: 6px; padding: 6px 8px; border-radius: 6px; background: var(--panel); border: 1px dashed var(--line); }
+.conc-list .row { align-items: center; gap: 6px; margin-top: 4px; }
+.orders h4 { margin: 12px 16px 0; }
