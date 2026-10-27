@@ -101,13 +101,15 @@ func New(n *node.Node, hub *Hub, opts Options) *gin.Engine {
 		c.JSON(http.StatusOK, os)
 	})
 	a.POST("/anchor/now", func(c *gin.Context) {
-		skipped, err := n.AnchorNowReport(c.Request.Context())
+		out, err := n.AnchorNowReport(c.Request.Context())
 		if err != nil {
 			fail(c, http.StatusConflict, "anchor_failed", err)
 			return
 		}
-		// skipped is "" when a checkpoint was submitted, else node.AnchorNothingNew / AnchorUnpushed.
-		c.JSON(http.StatusOK, gin.H{"anchored": skipped == "", "skipped": skipped, "latest": n.Status().Latest})
+		// skipped is "" when a checkpoint was submitted, else node.AnchorNothingNew / AnchorUnpushed / AnchorPending.
+		// latest is the confirmed view, which lags a fresh submission by the configured confirmations.
+		c.JSON(http.StatusOK, gin.H{"anchored": out.Skipped == "", "skipped": out.Skipped, "index": out.Index,
+			"count": out.Count, "tx": out.Tx, "latest": n.Status().Latest})
 	})
 	a.GET("/git", func(c *gin.Context) {
 		v, err := n.Git(40)

@@ -91,7 +91,15 @@ export type GitView = {
   checkpoints: { index: number; commit: string; count: number; blockNo: number }[];
 };
 
-export type AnchorResult = { anchored: boolean; skipped: "" | "nothing_new" | "unpushed"; latest?: Checkpoint };
+export type AnchorResult = {
+  anchored: boolean;
+  skipped: "" | "nothing_new" | "unpushed" | "pending";
+  /** Checkpoint just submitted, or the one still awaiting confirmations. */
+  index: number;
+  tx: string;
+  /** Confirmed view; lags a fresh submission on chains with confirmations. */
+  latest?: Checkpoint;
+};
 
 export type TypedData = {
   types: Record<string, { name: string; type: string }[]>;

@@ -22,6 +22,10 @@ type Manifest struct {
 	Registry      common.Address `json:"registry"`
 	AnchorLog     common.Address `json:"anchorLog"`
 	Governance    common.Address `json:"governance"`
+	// FromBlock is the block the contracts were deployed in; log scans start
+	// there. LogChunk caps the eth_getLogs block range (public RPCs limit it).
+	FromBlock uint64 `json:"fromBlock,omitempty"`
+	LogChunk  uint64 `json:"logChunk,omitempty"`
 }
 
 // Load reads and checks a manifest.

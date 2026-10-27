@@ -31,7 +31,7 @@ npm run build
 
 ## 边界
 
-渲染进程 sandbox/contextIsolation 开启、nodeIntegration 关闭；拒绝新窗口、跨源主窗口跳转、权限请求。预加载仅暴露打开固定本机界面的能力；不暴露磁盘、命令执行或任意 URL。静态服务校验 Host、路径和 HTTP 方法并设置 CSP。RPC 仅允许本机端点；远程部署若要支持，须显式调整 CSP 并审查可信配置。
+渲染进程 sandbox/contextIsolation 开启、nodeIntegration 关闭；拒绝新窗口、跨源主窗口跳转、权限请求。预加载仅暴露打开固定本机界面的能力；不暴露磁盘、命令执行或任意 URL。静态服务校验 Host、路径和 HTTP 方法并设置 CSP。RPC 默认只允许本机端点；连接测试网等远程 RPC 时，用环境变量 `GITCHAIN_RPC_ORIGINS` 列出精确的 https/wss 源（逗号分隔），不接受通配符或路径，启动时校验，写错直接报错。
 
 ## 冒烟
 

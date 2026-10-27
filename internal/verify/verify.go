@@ -92,7 +92,7 @@ type Message struct {
 	// DelegationExpired marks a delegated event that was not anchored before
 	// its delegation ended. It is invalid evidence but, unlike structural
 	// errors, it does not stop the room from being anchored.
-	DelegationExpired bool `json:"delegationExpired,omitempty"`
+	DelegationExpired bool             `json:"delegationExpired,omitempty"`
 	Concurrent        []ConcurrentPeer `json:"concurrent,omitempty"`
 }
 

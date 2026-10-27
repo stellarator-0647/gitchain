@@ -74,16 +74,17 @@ type Node struct {
 	// "anchor now" must not both submit the same head (the contract rejects
 	// the second as CommitAlreadyAnchored).
 	anchorMu sync.Mutex
-	draft   *Draft
+	draft    *Draft
 
-	stateMu    sync.RWMutex
-	verifier   *verify.Verifier
-	result     *verify.Result
-	lastSync   gitstore.SyncReport
-	quarantine []verify.Rejection
-	chainErr   string
-	roomInfo   *chain.RoomInfo
-	lastAnchor time.Time
+	stateMu     sync.RWMutex
+	verifier    *verify.Verifier
+	result      *verify.Result
+	lastSync    gitstore.SyncReport
+	quarantine  []verify.Rejection
+	chainErr    string
+	roomInfo    *chain.RoomInfo
+	lastAnchor  time.Time
+	pending     *pendingAnchor
 	checkpoints []chain.Checkpoint
 
 	// syncPaused stops fetch/push so a member can work "offline" (demo of
@@ -114,6 +115,9 @@ func New(cfg Config, repo *gitstore.Repo, reader chain.Reader, anchor chain.Anch
 	n := &Node{
 		cfg: cfg, domain: protocol.NewDomain(cfg.ChainID, cfg.Contracts.Registry),
 		repo: repo, reader: reader, anchor: anchor, notify: notify, verifier: verify.New(),
+		// Count the anchoring interval from start-up, so a restart does not
+		// anchor at once regardless of -anchor-every.
+		lastAnchor: time.Now(),
 	}
 	if err := os.MkdirAll(n.stateDir("outbox"), 0o700); err != nil {
 		return nil, err

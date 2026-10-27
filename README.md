@@ -74,6 +74,20 @@ npm --prefix desktop run build      # 产物：desktop/release/GitChain-win32-x6
 
 客户端自带界面（固定监听 `127.0.0.1:5174`），连接已运行的节点；Electron 不继承浏览器里的 MetaMask，需要钱包时点“在浏览器中使用钱包”。详见 [docs/client.md](docs/client.md)。
 
+## 部署到测试网（如 Sepolia）
+
+```bash
+cd contracts
+VOTING_BLOCKS=7200 forge script script/Deploy.s.sol --rpc-url $RPC --broadcast --skip-simulation --slow --account deployer   # 7200 块约 1 天
+../bin/gitchain-dev write-deploy -broadcast broadcast/Deploy.s.sol/11155111/run-latest.json   -rpc $RPC -chain-id 11155111 -out ../deployments/11155111.json
+```
+
+`--skip-simulation` 让 gas 由链上节点估算：Sepolia 上创建合约与写存储的 gas 远高于 Foundry 本地模拟（实测部署合计约 1650 万 gas，本地模拟约 250 万），按本地模拟估出的 gas 会让部署交易耗尽 gas 失败。
+
+部署清单字段：`fromBlock`（`write-deploy` 自动写入部署所在区块，日志从这里开始读）、`logChunk`（每次 `eth_getLogs` 的区块跨度，默认 2000；RPC 服务限制更严时调小）、`confirmations`（建议 2–3）。节点只在确认区块前进时重新读取链上状态，日志按区块增量读取，检查点读过即缓存，适合公共 RPC 的配额。
+
+然后用 `gitchain-dev create-room` 以真实成员地址建房，每位成员用自己的钱包地址启动节点（不加 `-dev-key-env`），锚定节点用 `-anchor-key-env` 并把 `-anchor-every` 调到 30m–1h。私钥只通过环境变量或 `cast wallet` keystore 提供，不要使用 Anvil 测试私钥。桌面客户端访问远程 RPC 需设置 `GITCHAIN_RPC_ORIGINS=https://你的RPC域名`（只接受精确的 https/wss 源）。
+
 ## 测试
 
 ```bash

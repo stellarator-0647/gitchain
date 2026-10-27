@@ -63,7 +63,25 @@ func (n *Node) applyRedactions(ctx context.Context) error {
 const (
 	AnchorNothingNew = "nothing_new" // every accepted event is already covered
 	AnchorUnpushed   = "unpushed"    // waiting until other members can fetch the head
+	AnchorPending    = "pending"     // our last checkpoint is not confirmed yet
 )
+
+// AnchorOutcome says what one anchoring round did.
+type AnchorOutcome struct {
+	Skipped string      `json:"skipped"` // "" when a checkpoint was submitted
+	Index   uint64      `json:"index"`   // submitted (or still pending) checkpoint index
+	Count   uint32      `json:"count"`
+	Tx      common.Hash `json:"tx"`
+}
+
+// pendingAnchor is a checkpoint this node submitted that the confirmed chain
+// view does not show yet. Until it does, the node must not build the next one
+// on the stale view (it would cite the wrong prevIndex and revert).
+type pendingAnchor struct {
+	index uint64
+	count uint32
+	tx    common.Hash
+}
 
 // AnchorNow anchors immediately if this is the anchor node (demo entry).
 func (n *Node) AnchorNow(ctx context.Context) error {
@@ -71,80 +89,93 @@ func (n *Node) AnchorNow(ctx context.Context) error {
 	return err
 }
 
-// AnchorNowReport is AnchorNow that also says why nothing was submitted ("" when anchored).
-func (n *Node) AnchorNowReport(ctx context.Context) (string, error) { return n.anchorRound(ctx, true) }
+// AnchorNowReport is AnchorNow that also reports the checkpoint submitted or why none was.
+func (n *Node) AnchorNowReport(ctx context.Context) (AnchorOutcome, error) {
+	return n.anchorRound(ctx, true)
+}
 
 func (n *Node) maybeAnchor(ctx context.Context, force bool) error {
 	_, err := n.anchorRound(ctx, force)
 	return err
 }
 
-func (n *Node) anchorRound(ctx context.Context, force bool) (string, error) {
+func (n *Node) anchorRound(ctx context.Context, force bool) (out AnchorOutcome, err error) {
+	skip := func(why string) (AnchorOutcome, error) { return AnchorOutcome{Skipped: why}, nil }
+	fail := func(e error) (AnchorOutcome, error) { return AnchorOutcome{}, e }
 	n.anchorMu.Lock()
 	defer n.anchorMu.Unlock()
 	if n.anchor == nil {
 		if force {
-			return "", errors.New("this node is not configured as the anchor node")
+			return fail(errors.New("this node is not configured as the anchor node"))
 		}
-		return "", nil
+		return skip("")
 	}
 	info, err := n.room(ctx)
 	if err != nil {
-		return "", err
+		return fail(err)
 	}
 	if info.AnchorWriter != n.anchor.Address() {
-		return "", errors.New("anchor key is not the room's anchor writer")
+		return fail(errors.New("anchor key is not the room's anchor writer"))
 	}
 	res := n.Result()
 	if res == nil {
-		return AnchorNothingNew, nil
+		return skip(AnchorNothingNew)
 	}
-	n.stateMu.RLock()
+	n.stateMu.Lock()
 	quarantined := len(n.quarantine) > 0
 	last := n.lastAnchor
-	n.stateMu.RUnlock()
+	if p := n.pending; p != nil && res.Latest != nil && res.Latest.Index >= p.index {
+		n.pending = nil // the confirmed view has caught up
+	}
+	pending := n.pending
+	n.stateMu.Unlock()
+	if pending != nil {
+		return AnchorOutcome{Skipped: AnchorPending, Index: pending.index, Count: pending.count, Tx: pending.tx}, nil
+	}
 	if quarantined || res.Health != verify.RoomHealthy {
-		return "", errors.New("room is not healthy; refusing to anchor")
+		return fail(errors.New("room is not healthy; refusing to anchor"))
 	}
 	for _, m := range res.Messages {
 		if m.Evidence == verify.EvidenceInvalid && !m.DelegationExpired {
-			return "", fmt.Errorf("head contains invalid event %s; refusing to anchor", m.EventID.Hex())
+			return fail(fmt.Errorf("head contains invalid event %s; refusing to anchor", m.EventID.Hex()))
 		}
 	}
 	if n.repo.Unpushed() > 0 {
-		return AnchorUnpushed, nil // anchor only what other members can fetch
+		return skip(AnchorUnpushed) // anchor only what other members can fetch
 	}
 	acc := res.Accepted()
 	var prevCount uint32
-	prev := uint64(chain.GenesisPrev)
+	prev, next := uint64(chain.GenesisPrev), uint64(0)
 	if res.Latest != nil {
-		prevCount, prev = res.Latest.Count, res.Latest.Index
+		prevCount, prev, next = res.Latest.Count, res.Latest.Index, res.Latest.Index+1
 	}
 	newEvents := len(acc) - int(prevCount)
 	if newEvents <= 0 {
-		return AnchorNothingNew, nil
+		return skip(AnchorNothingNew)
 	}
 	due := force || newEvents >= n.cfg.AnchorN || time.Since(last) >= n.cfg.AnchorEvery
 	if !due {
-		return "", nil
+		return skip("")
 	}
 	tree, _, err := protocol.SnapshotTree(acc)
 	if err != nil {
-		return "", err
+		return fail(err)
 	}
 	commit, err := protocol.SeenFromCommit(res.Head)
 	if err != nil {
-		return "", err
+		return fail(err)
 	}
 	tx, err := n.anchor.Anchor(ctx, n.cfg.Room, prev, commit, tree.Root(), uint32(tree.Count()))
 	if err != nil {
-		return "", err
+		return fail(err)
 	}
+	out = AnchorOutcome{Index: next, Count: uint32(tree.Count()), Tx: tx}
 	n.stateMu.Lock()
 	n.lastAnchor = time.Now()
+	n.pending = &pendingAnchor{index: next, count: out.Count, tx: tx}
 	n.stateMu.Unlock()
 	n.notify("anchor", map[string]any{"tx": tx, "count": tree.Count(), "root": tree.Root()})
-	return "", n.Refresh(ctx)
+	return out, n.Refresh(ctx)
 }
 
 // Inclusion proves that an event is a leaf of a checkpoint.

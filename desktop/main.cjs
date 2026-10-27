@@ -1,14 +1,15 @@
 const { app, BrowserWindow, ipcMain, shell, dialog, session } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs/promises');
-const { startServer } = require('./server.cjs');
+const { startServer, parseRpcOrigins } = require('./server.cjs');
 let server;
 const origin = 'http://127.0.0.1:5174';
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
   app.on('second-instance', () => { const w = BrowserWindow.getAllWindows()[0]; if (w) { if (w.isMinimized()) w.restore(); w.focus(); } });
   app.whenReady().then(async () => {
-    server = await startServer(path.join(__dirname, 'ui'));
+    // e.g. GITCHAIN_RPC_ORIGINS=https://sepolia.example-rpc.org for a testnet deployment
+    server = await startServer(path.join(__dirname, 'ui'), 5174, parseRpcOrigins(process.env.GITCHAIN_RPC_ORIGINS));
     session.defaultSession.setPermissionRequestHandler((_wc, _permission, done) => done(false));
     ipcMain.handle('open-wallet-browser', (event) => {
       if (new URL(event.senderFrame.url).origin !== origin) throw Error('Invalid sender');

@@ -4,7 +4,7 @@
 
 # local devnet state, keys and tokens
 /.devnet/
-/deployments/31337.json
+/deployments/*.json
 .env
 *.key
 

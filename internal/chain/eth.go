@@ -46,7 +46,12 @@ type Eth struct {
 	Addr          Addresses
 	ChainID       *big.Int
 	Confirmations uint64
+	// FromBlock is where log scans start (the deployment block); LogChunk is
+	// the eth_getLogs block range per request (DefaultLogChunk when zero).
+	FromBlock     uint64
+	LogChunk      uint64
 	reg, log, gov abi.ABI
+	cache         ethCache
 }
 
 // DialEth connects and checks that the endpoint serves the expected chain.
@@ -71,16 +76,7 @@ func DialEth(ctx context.Context, rpc string, chainID int64, addr Addresses, con
 	return e, nil
 }
 
-func (e *Eth) ConfirmedHead(ctx context.Context) (uint64, error) {
-	n, err := e.Client.BlockNumber(ctx)
-	if err != nil {
-		return 0, err
-	}
-	if n < e.Confirmations {
-		return 0, nil
-	}
-	return n - e.Confirmations, nil
-}
+func (e *Eth) ConfirmedHead(ctx context.Context) (uint64, error) { return e.rawHead(ctx) }
 
 func (e *Eth) call(ctx context.Context, block uint64, to common.Address, a abi.ABI, method string, args ...any) ([]any, error) {
 	data, err := a.Pack(method, args...)
@@ -144,12 +140,21 @@ func (e *Eth) Checkpoints(ctx context.Context, room common.Hash) ([]Checkpoint, 
 		return nil, err
 	}
 	n := out[0].(*big.Int).Uint64()
+	e.cache.mu.Lock()
+	known := e.cache.cps[room]
+	e.cache.mu.Unlock()
+	if uint64(len(known)) > n {
+		known = nil // the confirmed chain went back; read everything again
+	}
+	if uint64(len(known)) == n {
+		return append([]Checkpoint(nil), known...), nil
+	}
 	txs, err := e.anchorTxs(ctx, room, head)
 	if err != nil {
 		return nil, err
 	}
-	cps := make([]Checkpoint, 0, n)
-	for i := uint64(0); i < n; i++ {
+	cps := append(make([]Checkpoint, 0, n), known...)
+	for i := uint64(len(known)); i < n; i++ {
 		o, err := e.call(ctx, head, e.Addr.AnchorLog, e.log, "checkpoint", room, new(big.Int).SetUint64(i))
 		if err != nil {
 			return nil, err
@@ -162,14 +167,17 @@ func (e *Eth) Checkpoints(ctx context.Context, room common.Hash) ([]Checkpoint, 
 		cps = append(cps, Checkpoint{Index: i, PrevIndex: prev, GitCommit: t.GitCommit, Root: t.Root, Count: t.Count,
 			By: t.By, BlockNo: t.BlockNo, BlockTime: t.BlockTime, TxHash: txs[i]})
 	}
-	return cps, nil
+	e.cache.mu.Lock()
+	if e.cache.cps == nil {
+		e.cache.cps = map[common.Hash][]Checkpoint{}
+	}
+	e.cache.cps[room] = cps
+	e.cache.mu.Unlock()
+	return append([]Checkpoint(nil), cps...), nil
 }
 
 func (e *Eth) logs(ctx context.Context, addr common.Address, ev abi.Event, room common.Hash, head uint64) ([]types.Log, error) {
-	return e.Client.FilterLogs(ctx, ethereum.FilterQuery{
-		FromBlock: big.NewInt(0), ToBlock: new(big.Int).SetUint64(head), Addresses: []common.Address{addr},
-		Topics: [][]common.Hash{{ev.ID}, {room}},
-	})
+	return e.filter(ctx, addr, [][]common.Hash{{ev.ID}, {room}}, head)
 }
 
 func (e *Eth) anchorTxs(ctx context.Context, room common.Hash, head uint64) (map[uint64]common.Hash, error) {
@@ -218,10 +226,7 @@ func (e *Eth) ExecutedRedactions(ctx context.Context, room common.Hash) ([]Redac
 		return nil, err
 	}
 	ev := e.gov.Events["Executed"]
-	ls, err := e.Client.FilterLogs(ctx, ethereum.FilterQuery{
-		FromBlock: big.NewInt(0), ToBlock: new(big.Int).SetUint64(head), Addresses: []common.Address{e.Addr.Governance},
-		Topics: [][]common.Hash{{ev.ID}, nil, {room}},
-	})
+	ls, err := e.filter(ctx, e.Addr.Governance, [][]common.Hash{{ev.ID}, nil, {room}}, head)
 	if err != nil {
 		return nil, err
 	}
@@ -244,11 +249,12 @@ func (e *Eth) Proposals(ctx context.Context, room common.Hash) ([]Proposal, erro
 	if err != nil {
 		return nil, err
 	}
+	return memoized(e, "proposals"+room.Hex(), head, func() ([]Proposal, error) { return e.proposals(ctx, room, head) })
+}
+
+func (e *Eth) proposals(ctx context.Context, room common.Hash, head uint64) ([]Proposal, error) {
 	ev := e.gov.Events["Proposed"]
-	ls, err := e.Client.FilterLogs(ctx, ethereum.FilterQuery{
-		FromBlock: big.NewInt(0), ToBlock: new(big.Int).SetUint64(head), Addresses: []common.Address{e.Addr.Governance},
-		Topics: [][]common.Hash{{ev.ID}, nil, {room}},
-	})
+	ls, err := e.filter(ctx, e.Addr.Governance, [][]common.Hash{{ev.ID}, nil, {room}}, head)
 	if err != nil {
 		return nil, err
 	}
@@ -332,11 +338,12 @@ func (e *Eth) OrderProposals(ctx context.Context, room common.Hash) ([]OrderProp
 	if err != nil {
 		return nil, err
 	}
+	return memoized(e, "orders"+room.Hex(), head, func() ([]OrderProposal, error) { return e.orderProposals(ctx, room, head) })
+}
+
+func (e *Eth) orderProposals(ctx context.Context, room common.Hash, head uint64) ([]OrderProposal, error) {
 	ev := e.gov.Events["OrderProposed"]
-	ls, err := e.Client.FilterLogs(ctx, ethereum.FilterQuery{
-		FromBlock: big.NewInt(0), ToBlock: new(big.Int).SetUint64(head), Addresses: []common.Address{e.Addr.Governance},
-		Topics: [][]common.Hash{{ev.ID}, nil, {room}},
-	})
+	ls, err := e.filter(ctx, e.Addr.Governance, [][]common.Hash{{ev.ID}, nil, {room}}, head)
 	if err != nil {
 		return nil, err
 	}
@@ -394,6 +401,7 @@ func (e *Eth) Transact(ctx context.Context, key *ecdsa.PrivateKey, to common.Add
 	for time.Now().Before(deadline) {
 		rc, err := e.Client.TransactionReceipt(ctx, tx.Hash())
 		if err == nil {
+			e.forgetHead() // our own change should be visible on the next read
 			if rc.Status != types.ReceiptStatusSuccessful {
 				return rc, fmt.Errorf("%s reverted in tx %s", method, tx.Hash().Hex())
 			}

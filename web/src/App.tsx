@@ -317,7 +317,8 @@ export default function App() {
           {tab === "room" && status && (
             <RoomPanel status={status} onAnchor={() => run("锚定", async () => {
               const r = await client.anchorNow();
-              if (r.anchored) return `已提交检查点 #${r.latest?.index ?? "?"}（区块 ${r.latest?.blockNo ?? "?"}）`;
+              if (r.anchored) return `已提交检查点 #${r.index}，交易已上链；区块确认后各节点显示为“已锚定”`;
+              if (r.skipped === "pending") return `检查点 #${r.index} 已提交，正在等待区块确认，确认后再锚定新消息`;
               if (r.skipped === "unpushed") return "本节点还有未推送的提交，等推送到 Git 远端后再锚定（其他成员必须能拉取到被锚定的提交）";
               return `没有新的待锚定消息：当前消息都已在检查点 #${r.latest?.index ?? "?"} 及之前锚定`;
             })} />

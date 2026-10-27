@@ -11,6 +11,7 @@ import (
 	"log"
 	"math/big"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -82,6 +83,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	eth.FromBlock, eth.LogChunk = man.FromBlock, man.LogChunk
 	if cmd == "proposal" {
 		p, err := eth.Proposal(ctx, *id)
 		if err != nil {
@@ -151,9 +153,18 @@ func writeDeploy(broadcast, rpc string, chainID int64, out string) {
 			ContractAddress string `json:"contractAddress"`
 			TransactionType string `json:"transactionType"`
 		} `json:"transactions"`
+		Receipts []struct {
+			BlockNumber string `json:"blockNumber"`
+		} `json:"receipts"`
 	}
 	check(json.Unmarshal(raw, &rec))
 	m := deploy.Manifest{ChainID: chainID, RPC: rpc}
+	// Log scans start at the first deployment block instead of genesis.
+	for _, r := range rec.Receipts {
+		if b, err := strconv.ParseUint(strings.TrimPrefix(r.BlockNumber, "0x"), 16, 64); err == nil && (m.FromBlock == 0 || b < m.FromBlock) {
+			m.FromBlock = b
+		}
+	}
 	for _, t := range rec.Transactions {
 		if t.TransactionType != "CREATE" {
 			continue

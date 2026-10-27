@@ -70,6 +70,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("chain: %v", err)
 	}
+	eth.FromBlock, eth.LogChunk = man.FromBlock, man.LogChunk
 	if _, err := eth.Room(ctx, room); err != nil {
 		log.Fatalf("room %s: %v (create it on chain first)", room.Hex(), err)
 	}

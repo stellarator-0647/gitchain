@@ -18,3 +18,19 @@ test('static server serves local assets and rejects invalid methods and Host', a
   assert.equal((await fetch(url+'/%2e%2e%2fpackage.json')).status,404);
  } finally {await new Promise(resolve=>server.close(resolve));await fs.rm(root,{recursive:true});}
 });
+test('remote RPC origins are opt-in and must be exact https origins', async () => {
+ const {parseRpcOrigins}=require('./server.cjs');
+ assert.deepEqual(parseRpcOrigins(''),[]);
+ assert.deepEqual(parseRpcOrigins('https://rpc.example.org, wss://ws.example.org'),['https://rpc.example.org','wss://ws.example.org']);
+ assert.throws(()=>parseRpcOrigins('http://rpc.example.org'));
+ assert.throws(()=>parseRpcOrigins('https://rpc.example.org/v2/key'));
+ assert.throws(()=>parseRpcOrigins('https://*.example.org'));
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'gitchain-client-'));
+ await fs.writeFile(path.join(root,'index.html'),'<title>GitChain</title>');
+ const server=await startServer(root,0,['https://rpc.example.org']);
+ try {
+  const csp=(await fetch(`http://127.0.0.1:${server.address().port}`)).headers.get('content-security-policy');
+  assert.match(csp,/connect-src [^;]*https:\/\/rpc\.example\.org/);
+  assert.doesNotMatch(csp,/connect-src [^;]*https:;/);
+ } finally {await new Promise(resolve=>server.close(resolve));await fs.rm(root,{recursive:true});}
+});
